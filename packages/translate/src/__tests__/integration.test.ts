@@ -1073,4 +1073,499 @@ describe('Integration Tests', () => {
       expect(original).toEqual(originalCopy)
     })
   })
+
+  describe('Resource-Based Caching Integration', () => {
+    it('should create resource cache key with correct format', async () => {
+      const todo = { id: '123', title: 'Hello' }
+
+      await translate.object(todo, {
+        fields: ['title'],
+        to: 'he',
+        resourceType: 'todo',
+        resourceIdField: 'id',
+      })
+
+      // Translate same text for different resource - should NOT use cache
+      const todo2 = { id: '456', title: 'Hello' }
+      await translate.object(todo2, {
+        fields: ['title'],
+        to: 'he',
+        resourceType: 'todo',
+        resourceIdField: 'id',
+      })
+
+      // Should have 2 separate cache entries (different resource IDs)
+      const stats = await translate.getCacheStats()
+      expect(stats.totalEntries).toBe(2)
+    })
+
+    it('should cache each field separately with resource info', async () => {
+      const todo = {
+        id: '123',
+        title: 'Hello',
+        description: 'World',
+        notes: 'Goodbye',
+      }
+
+      await translate.object(todo, {
+        fields: ['title', 'description', 'notes'],
+        to: 'he',
+        resourceType: 'todo',
+        resourceIdField: 'id',
+      })
+
+      // Should have 3 cache entries (one per field)
+      const stats = await translate.getCacheStats()
+      expect(stats.totalEntries).toBe(3)
+    })
+
+    it('should use different cache keys for different resource types', async () => {
+      const todo = { id: '1', title: 'Hello' }
+      const note = { id: '1', title: 'Hello' }
+
+      await translate.object(todo, {
+        fields: ['title'],
+        to: 'he',
+        resourceType: 'todo',
+        resourceIdField: 'id',
+      })
+
+      await translate.object(note, {
+        fields: ['title'],
+        to: 'he',
+        resourceType: 'note',
+        resourceIdField: 'id',
+      })
+
+      // Should have 2 entries (different resource types)
+      const stats = await translate.getCacheStats()
+      expect(stats.totalEntries).toBe(2)
+    })
+
+    it('should use different cache keys for different fields', async () => {
+      const todo1 = { id: '1', title: 'Hello' }
+      const todo2 = { id: '1', description: 'Hello' }
+
+      await translate.object(todo1, {
+        fields: ['title'],
+        to: 'he',
+        resourceType: 'todo',
+        resourceIdField: 'id',
+      })
+
+      await translate.object(todo2, {
+        fields: ['description'],
+        to: 'he',
+        resourceType: 'todo',
+        resourceIdField: 'id',
+      })
+
+      // Should have 2 entries (different fields)
+      const stats = await translate.getCacheStats()
+      expect(stats.totalEntries).toBe(2)
+    })
+
+    it('should reuse cache for same resource/field/language', async () => {
+      const todo = { id: '123', title: 'Hello' }
+
+      // First call
+      const result1 = await translate.object(todo, {
+        fields: ['title'],
+        to: 'he',
+        resourceType: 'todo',
+        resourceIdField: 'id',
+      })
+
+      // Second call - same resource
+      const result2 = await translate.object(todo, {
+        fields: ['title'],
+        to: 'he',
+        resourceType: 'todo',
+        resourceIdField: 'id',
+      })
+
+      expect(result1.title).toBe('שלום')
+      expect(result2.title).toBe('שלום')
+
+      // Only 1 cache entry
+      const stats = await translate.getCacheStats()
+      expect(stats.totalEntries).toBe(1)
+    })
+
+    it('should clear only specific resource cache entries', async () => {
+      const todo1 = { id: '1', title: 'Hello', description: 'World' }
+      const todo2 = { id: '2', title: 'Goodbye' }
+
+      await translate.object(todo1, {
+        fields: ['title', 'description'],
+        to: 'he',
+        resourceType: 'todo',
+        resourceIdField: 'id',
+      })
+
+      await translate.object(todo2, {
+        fields: ['title'],
+        to: 'he',
+        resourceType: 'todo',
+        resourceIdField: 'id',
+      })
+
+      const stats1 = await translate.getCacheStats()
+      expect(stats1.totalEntries).toBe(3)
+
+      // Clear only todo 1
+      const deleted = await translate.clearResourceCache('todo', '1')
+      expect(deleted).toBe(2)
+
+      const stats2 = await translate.getCacheStats()
+      expect(stats2.totalEntries).toBe(1)
+    })
+
+    it('should handle objects array with resource caching per item', async () => {
+      const todos = [
+        { id: '1', title: 'Hello', description: 'World' },
+        { id: '2', title: 'Goodbye', description: 'World' },
+        { id: '3', title: 'Hello', description: 'Goodbye' },
+      ]
+
+      await translate.objects(todos, {
+        fields: ['title', 'description'],
+        to: 'he',
+        resourceType: 'todo',
+        resourceIdField: 'id',
+      })
+
+      // 3 items × 2 fields = 6 cache entries
+      const stats = await translate.getCacheStats()
+      expect(stats.totalEntries).toBe(6)
+    })
+
+    it('should allow manual override per resource field', async () => {
+      // Set manual overrides for specific resources
+      await translate.setManual({
+        text: 'Hello',
+        translatedText: 'שלום מיוחד',
+        to: 'he',
+        resourceType: 'todo',
+        resourceId: '1',
+        field: 'title',
+      })
+
+      await translate.setManual({
+        text: 'Hello',
+        translatedText: 'שלום אחר',
+        to: 'he',
+        resourceType: 'todo',
+        resourceId: '2',
+        field: 'title',
+      })
+
+      const todos = [
+        { id: '1', title: 'Hello' },
+        { id: '2', title: 'Hello' },
+        { id: '3', title: 'Hello' },
+      ]
+
+      const translated = await translate.objects(todos, {
+        fields: ['title'],
+        to: 'he',
+        resourceType: 'todo',
+        resourceIdField: 'id',
+      })
+
+      expect(translated[0].title).toBe('שלום מיוחד') // Manual override
+      expect(translated[1].title).toBe('שלום אחר') // Different manual override
+      expect(translated[2].title).toBe('שלום') // AI translation
+    })
+
+    it('should clear manual override and fall back to hash cache', async () => {
+      const todo = { id: '1', title: 'Hello' }
+
+      // First, translate without resource info (creates hash cache)
+      await translate.object(todo, {
+        fields: ['title'],
+        to: 'he',
+      })
+
+      // Set manual override
+      await translate.setManual({
+        text: 'Hello',
+        translatedText: 'שלום ידני',
+        to: 'he',
+        resourceType: 'todo',
+        resourceId: '1',
+        field: 'title',
+      })
+
+      // Should get manual override
+      const result1 = await translate.object(todo, {
+        fields: ['title'],
+        to: 'he',
+        resourceType: 'todo',
+        resourceIdField: 'id',
+      })
+      expect(result1.title).toBe('שלום ידני')
+
+      // Clear manual override
+      await translate.clearManual({
+        resourceType: 'todo',
+        resourceId: '1',
+        field: 'title',
+        to: 'he',
+      })
+
+      // Should fall back to hash cache
+      const result2 = await translate.object(todo, {
+        fields: ['title'],
+        to: 'he',
+        resourceType: 'todo',
+        resourceIdField: 'id',
+      })
+      expect(result2.title).toBe('שלום')
+    })
+
+    it('should handle mixed resource and non-resource translations', async () => {
+      const todo = { id: '1', title: 'Hello' }
+
+      // Translate with resource info
+      await translate.object(todo, {
+        fields: ['title'],
+        to: 'he',
+        resourceType: 'todo',
+        resourceIdField: 'id',
+      })
+
+      // Translate without resource info (should create hash cache)
+      await translate.object(todo, {
+        fields: ['title'],
+        to: 'he',
+      })
+
+      // Should have 2 cache entries (resource-based + hash-based)
+      const stats = await translate.getCacheStats()
+      expect(stats.totalEntries).toBe(2)
+    })
+
+    it('should handle UUID-style resource IDs', async () => {
+      const todo = {
+        id: '550e8400-e29b-41d4-a716-446655440000',
+        title: 'Hello',
+      }
+
+      const translated = await translate.object(todo, {
+        fields: ['title'],
+        to: 'he',
+        resourceType: 'todo',
+        resourceIdField: 'id',
+      })
+
+      expect(translated.title).toBe('שלום')
+
+      const stats = await translate.getCacheStats()
+      expect(stats.totalEntries).toBe(1)
+    })
+
+    it('should handle resource IDs with special characters', async () => {
+      const todo = {
+        id: 'user:123:task:456',
+        title: 'Hello',
+      }
+
+      const translated = await translate.object(todo, {
+        fields: ['title'],
+        to: 'he',
+        resourceType: 'todo',
+        resourceIdField: 'id',
+      })
+
+      expect(translated.title).toBe('שלום')
+    })
+
+    it('should work with custom ID field names', async () => {
+      const item = {
+        itemId: '123',
+        title: 'Hello',
+      }
+
+      const translated = await translate.object(item, {
+        fields: ['title'],
+        to: 'he',
+        resourceType: 'item',
+        resourceIdField: 'itemId',
+      })
+
+      expect(translated.title).toBe('שלום')
+    })
+
+    it('should work with _id field (MongoDB style)', async () => {
+      const doc = {
+        _id: '507f1f77bcf86cd799439011',
+        title: 'Hello',
+      }
+
+      const translated = await translate.object(doc, {
+        fields: ['title'],
+        to: 'he',
+        resourceType: 'document',
+        resourceIdField: '_id',
+      })
+
+      expect(translated.title).toBe('שלום')
+    })
+
+    it('should cache per language with resource info', async () => {
+      const todo = { id: '1', title: 'Hello' }
+
+      await translate.object(todo, {
+        fields: ['title'],
+        to: 'he',
+        resourceType: 'todo',
+        resourceIdField: 'id',
+      })
+
+      await translate.object(todo, {
+        fields: ['title'],
+        to: 'ar',
+        resourceType: 'todo',
+        resourceIdField: 'id',
+      })
+
+      // 2 cache entries (same resource, different languages)
+      const stats = await translate.getCacheStats()
+      expect(stats.totalEntries).toBe(2)
+      expect(stats.byLanguage.he).toBe(1)
+      expect(stats.byLanguage.ar).toBe(1)
+    })
+
+    it('should handle clearing all cache for a language with resource entries', async () => {
+      const todo = { id: '1', title: 'Hello', description: 'World' }
+
+      await translate.object(todo, {
+        fields: ['title', 'description'],
+        to: 'he',
+        resourceType: 'todo',
+        resourceIdField: 'id',
+      })
+
+      await translate.object(todo, {
+        fields: ['title', 'description'],
+        to: 'ar',
+        resourceType: 'todo',
+        resourceIdField: 'id',
+      })
+
+      const stats1 = await translate.getCacheStats()
+      expect(stats1.totalEntries).toBe(4)
+
+      // Clear Hebrew cache
+      await translate.clearCache('he')
+
+      const stats2 = await translate.getCacheStats()
+      expect(stats2.totalEntries).toBe(2)
+      expect(stats2.byLanguage.ar).toBe(2)
+    })
+
+    it('should translate objects array to both languages with resource caching', async () => {
+      const todos = [
+        { id: '1', title: 'Hello' },
+        { id: '2', title: 'Goodbye' },
+      ]
+
+      const heTranslated = await translate.objects(todos, {
+        fields: ['title'],
+        to: 'he',
+        resourceType: 'todo',
+        resourceIdField: 'id',
+      })
+
+      const arTranslated = await translate.objects(todos, {
+        fields: ['title'],
+        to: 'ar',
+        resourceType: 'todo',
+        resourceIdField: 'id',
+      })
+
+      expect(heTranslated[0].title).toBe('שלום')
+      expect(heTranslated[1].title).toBe('להתראות')
+      expect(arTranslated[0].title).toBe('مرحبا')
+      expect(arTranslated[1].title).toBe('وداعا')
+
+      // 2 items × 2 languages = 4 cache entries
+      const stats = await translate.getCacheStats()
+      expect(stats.totalEntries).toBe(4)
+    })
+
+    it('should handle partial resource info (only resourceType, no resourceIdField)', async () => {
+      const todo = { id: '1', title: 'Hello' }
+
+      // When resourceIdField is missing, should use hash-based caching
+      const translated = await translate.object(todo, {
+        fields: ['title'],
+        to: 'he',
+        resourceType: 'todo',
+        // resourceIdField not provided
+      })
+
+      expect(translated.title).toBe('שלום')
+
+      const stats = await translate.getCacheStats()
+      expect(stats.totalEntries).toBe(1)
+    })
+
+    it('should correctly track manual overrides count', async () => {
+      await translate.setManual({
+        text: 'Hello',
+        translatedText: 'שלום 1',
+        to: 'he',
+        resourceType: 'todo',
+        resourceId: '1',
+        field: 'title',
+      })
+
+      await translate.setManual({
+        text: 'World',
+        translatedText: 'עולם 1',
+        to: 'he',
+        resourceType: 'todo',
+        resourceId: '1',
+        field: 'description',
+      })
+
+      const stats = await translate.getCacheStats()
+      expect(stats.manualOverrides).toBe(2)
+    })
+
+    it('should handle concurrent resource-based translations', async () => {
+      const todos = [
+        { id: '1', title: 'Hello' },
+        { id: '2', title: 'World' },
+        { id: '3', title: 'Goodbye' },
+      ]
+
+      const [result1, result2, result3] = await Promise.all([
+        translate.object(todos[0], {
+          fields: ['title'],
+          to: 'he',
+          resourceType: 'todo',
+          resourceIdField: 'id',
+        }),
+        translate.object(todos[1], {
+          fields: ['title'],
+          to: 'he',
+          resourceType: 'todo',
+          resourceIdField: 'id',
+        }),
+        translate.object(todos[2], {
+          fields: ['title'],
+          to: 'he',
+          resourceType: 'todo',
+          resourceIdField: 'id',
+        }),
+      ])
+
+      expect(result1.title).toBe('שלום')
+      expect(result2.title).toBe('עולם')
+      expect(result3.title).toBe('להתראות')
+    })
+  })
 })
