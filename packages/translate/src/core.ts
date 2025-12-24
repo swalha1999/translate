@@ -17,6 +17,11 @@ export async function translateText(
     return { text, from: from ?? 'en', to, cached: true }
   }
 
+  // Short-circuit if from === to (no translation needed)
+  if (from && from === to) {
+    return { text, from, to, cached: true }
+  }
+
   const cached = await getCached(adapter, { text, to, resourceType, resourceId, field })
   if (cached) {
     if (cached.from === to || (from && from === to)) {
