@@ -48,6 +48,16 @@ export function HomePage() {
           title="RTL Support"
           desc="Built-in support for Arabic, Hebrew, and more"
         />
+        <Feature
+          icon="📦"
+          title="Object Translation"
+          desc="Type-safe one-liner to translate object fields"
+        />
+        <Feature
+          icon="🎯"
+          title="Batch Efficiency"
+          desc="Translate arrays of objects in a single call"
+        />
       </div>
 
       <div className="bg-zinc-900 rounded-xl p-6 border border-zinc-800">

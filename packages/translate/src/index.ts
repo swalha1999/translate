@@ -1,5 +1,5 @@
 export { createTranslate } from './create-translate'
-export type { Translate, TranslateConfig, TranslateParams, TranslateResult, BatchParams, SetManualParams, SupportedLanguage } from './create-translate'
+export type { Translate, TranslateConfig, TranslateParams, TranslateResult, BatchParams, SetManualParams, SupportedLanguage, StringKeys, ObjectTranslateParams } from './create-translate'
 
 export type { CacheAdapter, CacheEntry } from './adapters/types'
 

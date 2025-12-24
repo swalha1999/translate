@@ -1,6 +1,6 @@
 import type { LanguageModel } from 'ai'
 import type { CacheAdapter } from './adapters/types'
-import { translateText, translateBatch, detectLanguage } from './core'
+import { translateText, translateBatch, detectLanguage, translateObject, translateObjects } from './core'
 import { setManualTranslation, clearManualTranslation } from './cache'
 
 export type SupportedLanguage = 'en' | 'ar' | 'he' | 'ru'
@@ -46,6 +46,18 @@ export interface SetManualParams {
   field: string
 }
 
+// Extract keys where value is string | null | undefined
+export type StringKeys<T> = {
+  [K in keyof T]: T[K] extends string | null | undefined ? K : never
+}[keyof T]
+
+export interface ObjectTranslateParams<T, K extends StringKeys<T>> {
+  fields: K[]
+  to: SupportedLanguage
+  from?: SupportedLanguage
+  context?: string
+}
+
 export function createTranslate(config: TranslateConfig) {
   const { adapter } = config
 
@@ -72,6 +84,16 @@ export function createTranslate(config: TranslateConfig) {
     isRTL: (lang: SupportedLanguage) => ['ar', 'he'].includes(lang),
 
     languages: config.languages,
+
+    object: <T extends object, K extends StringKeys<T>>(
+      item: T,
+      params: ObjectTranslateParams<T, K>
+    ) => translateObject(adapter, config, item, params),
+
+    objects: <T extends object, K extends StringKeys<T>>(
+      items: T[],
+      params: ObjectTranslateParams<T, K>
+    ) => translateObjects(adapter, config, items, params),
   }
 }
 

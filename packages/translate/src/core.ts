@@ -1,5 +1,5 @@
 import type { CacheAdapter } from './adapters/types'
-import type { TranslateConfig, TranslateParams, TranslateResult, BatchParams, SupportedLanguage } from './create-translate'
+import type { TranslateConfig, TranslateParams, TranslateResult, BatchParams, SupportedLanguage, StringKeys, ObjectTranslateParams } from './create-translate'
 import { getCached, setCache } from './cache'
 import { createHashKey, createResourceKey, hasResourceInfo } from './cache-key'
 import { translateWithAI, detectLanguageWithAI } from './providers/ai-sdk'
@@ -123,4 +123,104 @@ export async function detectLanguage(
     text,
     temperature: 0,
   })
+}
+
+export async function translateObject<T extends object, K extends StringKeys<T>>(
+  adapter: CacheAdapter,
+  config: TranslateConfig,
+  item: T,
+  params: ObjectTranslateParams<T, K>
+): Promise<T> {
+  const { fields, to, from, context } = params
+
+  // Collect texts to translate with their field info
+  const textsToTranslate: { field: K; text: string }[] = []
+
+  for (const field of fields) {
+    const value = item[field]
+    if (typeof value === 'string' && value.trim()) {
+      textsToTranslate.push({ field, text: value })
+    }
+  }
+
+  // If no texts to translate, return original
+  if (textsToTranslate.length === 0) {
+    return item
+  }
+
+  try {
+    const results = await translateBatch(adapter, config, {
+      texts: textsToTranslate.map(t => t.text),
+      to,
+      from,
+      context,
+    })
+
+    // Build translated object
+    const translated = { ...item }
+    for (let i = 0; i < textsToTranslate.length; i++) {
+      const { field } = textsToTranslate[i]
+      const result = results[i]
+      if (result) {
+        ;(translated as Record<string, unknown>)[field as string] = result.text
+      }
+    }
+
+    return translated
+  } catch (error) {
+    console.error('Translation failed for object:', error)
+    return item
+  }
+}
+
+export async function translateObjects<T extends object, K extends StringKeys<T>>(
+  adapter: CacheAdapter,
+  config: TranslateConfig,
+  items: T[],
+  params: ObjectTranslateParams<T, K>
+): Promise<T[]> {
+  const { fields, to, from, context } = params
+
+  // Collect all texts with their item index and field info
+  const textsToTranslate: { itemIndex: number; field: K; text: string }[] = []
+
+  for (let itemIndex = 0; itemIndex < items.length; itemIndex++) {
+    const item = items[itemIndex]
+    for (const field of fields) {
+      const value = item[field]
+      if (typeof value === 'string' && value.trim()) {
+        textsToTranslate.push({ itemIndex, field, text: value })
+      }
+    }
+  }
+
+  // If no texts to translate, return original array
+  if (textsToTranslate.length === 0) {
+    return items
+  }
+
+  try {
+    const results = await translateBatch(adapter, config, {
+      texts: textsToTranslate.map(t => t.text),
+      to,
+      from,
+      context,
+    })
+
+    // Build translated items
+    const translated = items.map(item => ({ ...item }))
+
+    for (let i = 0; i < textsToTranslate.length; i++) {
+      const { itemIndex, field } = textsToTranslate[i]
+      const result = results[i]
+      if (result) {
+        ;(translated[itemIndex] as Record<string, unknown>)[field as string] = result.text
+      }
+    }
+
+    return translated
+  } catch (error) {
+    console.error('Translation failed for objects:', error)
+    return items
+  }
 }

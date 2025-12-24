@@ -57,6 +57,65 @@ const results = await translate.batch({
       </section>
 
       <section className="mb-12">
+        <h2 className="text-2xl font-semibold mb-4 text-zinc-200">translate.object()</h2>
+        <p className="text-zinc-400 mb-4">
+          Translate specific fields of an object. Type-safe - only accepts fields with string values.
+        </p>
+        <CodeBlock
+          language="typescript"
+          code={`interface ObjectTranslateParams<T, K> {
+  fields: K[]               // Fields to translate (must be string fields)
+  to: SupportedLanguage     // Target language
+  from?: SupportedLanguage  // Source language (auto-detect if omitted)
+  context?: string          // Hint for AI translation
+}
+
+const todo = {
+  id: 1,
+  title: 'Buy groceries',
+  description: 'Milk, eggs, and bread',
+  priority: 5,
+}
+
+const translated = await translate.object(todo, {
+  fields: ['title', 'description'], // Only string fields allowed
+  to: 'ar',
+  context: 'task management',
+})
+// → { id: 1, title: 'شراء البقالة', description: '...', priority: 5 }
+
+// On error: logs to console and returns original object unchanged`}
+        />
+      </section>
+
+      <section className="mb-12">
+        <h2 className="text-2xl font-semibold mb-4 text-zinc-200">translate.objects()</h2>
+        <p className="text-zinc-400 mb-4">
+          Translate specific fields across an array of objects. Batches all translations efficiently.
+        </p>
+        <CodeBlock
+          language="typescript"
+          code={`const todos = [
+  { id: 1, title: 'Buy groceries', description: 'Milk and eggs' },
+  { id: 2, title: 'Call mom', description: null },
+  { id: 3, title: 'Exercise', description: 'Go for a run' },
+]
+
+const translated = await translate.objects(todos, {
+  fields: ['title', 'description'],
+  to: 'he',
+  context: 'task management app',
+})
+
+// Features:
+// - Batches all text fields into a single translation call
+// - Skips null/undefined/empty fields automatically
+// - Returns original array on error (with console.error log)
+// - Preserves object structure and non-translated fields`}
+        />
+      </section>
+
+      <section className="mb-12">
         <h2 className="text-2xl font-semibold mb-4 text-zinc-200">translate.setManual()</h2>
         <p className="text-zinc-400 mb-4">Set a manual translation override for a specific resource.</p>
         <CodeBlock

@@ -9,6 +9,7 @@ AI-powered translation for user-generated content with intelligent caching. Supp
 - **Manual overrides** - Override AI translations for specific resources
 - **RTL support** - Built-in RTL language detection
 - **Batch translation** - Translate multiple texts efficiently
+- **Object translation** - Type-safe translation of object fields in one line
 - **Language detection** - Auto-detect source language
 - **Database adapters** - Memory, Drizzle, Prisma
 
@@ -52,6 +53,25 @@ const results = await translate.batch({
 // Detect language
 const detected = await translate.detectLanguage('مرحبا')
 console.log(detected.language) // 'ar'
+
+// Translate object fields (type-safe!)
+const todo = { id: 1, title: 'Buy groceries', description: 'Milk and eggs' }
+const translated = await translate.object(todo, {
+  fields: ['title', 'description'],
+  to: 'ar',
+})
+// { id: 1, title: 'شراء البقالة', description: 'حليب وبيض' }
+
+// Translate array of objects
+const todos = [
+  { id: 1, title: 'Buy groceries', done: false },
+  { id: 2, title: 'Call mom', done: true },
+]
+const translatedTodos = await translate.objects(todos, {
+  fields: ['title'],
+  to: 'he',
+  context: 'task management app',
+})
 ```
 
 ## AI Providers
@@ -280,6 +300,54 @@ const results = await translate.batch({
   context: 'greetings',
 })
 ```
+
+### `translate.object(item, params)`
+
+Translate specific fields of an object. Type-safe - only accepts fields with string values.
+
+```typescript
+const todo = {
+  id: 1,
+  title: 'Buy groceries',
+  description: 'Milk, eggs, and bread',
+  priority: 5,
+}
+
+const translated = await translate.object(todo, {
+  fields: ['title', 'description'], // Only string fields allowed
+  to: 'ar',
+  from: 'en', // optional
+  context: 'task management', // optional
+})
+
+// Result: { id: 1, title: 'شراء البقالة', description: '...', priority: 5 }
+```
+
+**Error handling:** On translation failure, logs to console and returns the original object unchanged.
+
+### `translate.objects(items, params)`
+
+Translate specific fields across an array of objects. Batches all translations efficiently.
+
+```typescript
+const todos = [
+  { id: 1, title: 'Buy groceries', description: 'Milk and eggs' },
+  { id: 2, title: 'Call mom', description: null },
+  { id: 3, title: 'Exercise', description: 'Go for a run' },
+]
+
+const translated = await translate.objects(todos, {
+  fields: ['title', 'description'],
+  to: 'he',
+  context: 'task management app',
+})
+```
+
+**Features:**
+- Batches all text fields into a single translation call
+- Skips null/undefined/empty fields automatically
+- Returns original array on error (with console.error log)
+- Preserves object structure and non-translated fields
 
 ### `translate.setManual(params)`
 
