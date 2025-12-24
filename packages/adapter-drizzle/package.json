@@ -1,6 +1,6 @@
 {
   "name": "@swalha1999/translate-adapter-drizzle",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Drizzle ORM adapter for @swalha1999/translate",
   "author": "swalha1999",
   "repository": {
