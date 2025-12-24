@@ -131,7 +131,8 @@ export async function translateObject<T extends object, K extends StringKeys<T>>
   item: T,
   params: ObjectTranslateParams<T, K>
 ): Promise<T> {
-  const { fields, to, from, context } = params
+  const { fields, to, from, context, resourceType, resourceIdField } = params
+  const resourceId = resourceIdField ? String(item[resourceIdField]) : undefined
 
   // Collect texts to translate with their field info
   const textsToTranslate: { field: K; text: string }[] = []
@@ -149,12 +150,28 @@ export async function translateObject<T extends object, K extends StringKeys<T>>
   }
 
   try {
-    const results = await translateBatch(adapter, config, {
-      texts: textsToTranslate.map(t => t.text),
-      to,
-      from,
-      context,
-    })
+    // Use translateText for each field when resource info is provided (enables field-level caching)
+    // Otherwise use batch translation
+    const results = resourceType && resourceId
+      ? await Promise.all(
+          textsToTranslate.map(({ field, text }) =>
+            translateText(adapter, config, {
+              text,
+              to,
+              from,
+              context,
+              resourceType,
+              resourceId,
+              field: String(field),
+            })
+          )
+        )
+      : await translateBatch(adapter, config, {
+          texts: textsToTranslate.map(t => t.text),
+          to,
+          from,
+          context,
+        })
 
     // Build translated object
     const translated = { ...item }
@@ -179,17 +196,19 @@ export async function translateObjects<T extends object, K extends StringKeys<T>
   items: T[],
   params: ObjectTranslateParams<T, K>
 ): Promise<T[]> {
-  const { fields, to, from, context } = params
+  const { fields, to, from, context, resourceType, resourceIdField } = params
 
-  // Collect all texts with their item index and field info
-  const textsToTranslate: { itemIndex: number; field: K; text: string }[] = []
+  // Collect all texts with their item index, field info, and resource ID
+  const textsToTranslate: { itemIndex: number; field: K; text: string; resourceId?: string }[] = []
 
   for (let itemIndex = 0; itemIndex < items.length; itemIndex++) {
     const item = items[itemIndex]
+    const resourceId = resourceIdField ? String(item[resourceIdField]) : undefined
+
     for (const field of fields) {
       const value = item[field]
       if (typeof value === 'string' && value.trim()) {
-        textsToTranslate.push({ itemIndex, field, text: value })
+        textsToTranslate.push({ itemIndex, field, text: value, resourceId })
       }
     }
   }
@@ -200,12 +219,28 @@ export async function translateObjects<T extends object, K extends StringKeys<T>
   }
 
   try {
-    const results = await translateBatch(adapter, config, {
-      texts: textsToTranslate.map(t => t.text),
-      to,
-      from,
-      context,
-    })
+    // Use translateText for each field when resource info is provided (enables field-level caching)
+    // Otherwise use batch translation
+    const results = resourceType && resourceIdField
+      ? await Promise.all(
+          textsToTranslate.map(({ field, text, resourceId }) =>
+            translateText(adapter, config, {
+              text,
+              to,
+              from,
+              context,
+              resourceType,
+              resourceId,
+              field: String(field),
+            })
+          )
+        )
+      : await translateBatch(adapter, config, {
+          texts: textsToTranslate.map(t => t.text),
+          to,
+          from,
+          context,
+        })
 
     // Build translated items
     const translated = items.map(item => ({ ...item }))

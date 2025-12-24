@@ -55,22 +55,26 @@ const detected = await translate.detectLanguage('مرحبا')
 console.log(detected.language) // 'ar'
 
 // Translate object fields (type-safe!)
-const todo = { id: 1, title: 'Buy groceries', description: 'Milk and eggs' }
+const todo = { id: '1', title: 'Buy groceries', description: 'Milk and eggs' }
 const translated = await translate.object(todo, {
   fields: ['title', 'description'],
   to: 'ar',
+  resourceType: 'todo',       // optional: enables resource-based caching
+  resourceIdField: 'id',      // optional: which field contains the ID
 })
-// { id: 1, title: 'شراء البقالة', description: 'حليب وبيض' }
+// { id: '1', title: 'شراء البقالة', description: 'حليب وبيض' }
 
 // Translate array of objects
 const todos = [
-  { id: 1, title: 'Buy groceries', done: false },
-  { id: 2, title: 'Call mom', done: true },
+  { id: '1', title: 'Buy groceries', done: false },
+  { id: '2', title: 'Call mom', done: true },
 ]
 const translatedTodos = await translate.objects(todos, {
   fields: ['title'],
   to: 'he',
   context: 'task management app',
+  resourceType: 'todo',
+  resourceIdField: 'id',
 })
 ```
 
@@ -307,7 +311,7 @@ Translate specific fields of an object. Type-safe - only accepts fields with str
 
 ```typescript
 const todo = {
-  id: 1,
+  id: '123',
   title: 'Buy groceries',
   description: 'Milk, eggs, and bread',
   priority: 5,
@@ -316,11 +320,13 @@ const todo = {
 const translated = await translate.object(todo, {
   fields: ['title', 'description'], // Only string fields allowed
   to: 'ar',
-  from: 'en', // optional
+  from: 'en',              // optional
   context: 'task management', // optional
+  resourceType: 'todo',    // optional: enables resource-based caching
+  resourceIdField: 'id',   // optional: field containing the resource ID
 })
 
-// Result: { id: 1, title: 'شراء البقالة', description: '...', priority: 5 }
+// Result: { id: '123', title: 'شراء البقالة', description: '...', priority: 5 }
 ```
 
 **Error handling:** On translation failure, logs to console and returns the original object unchanged.
@@ -331,23 +337,26 @@ Translate specific fields across an array of objects. Batches all translations e
 
 ```typescript
 const todos = [
-  { id: 1, title: 'Buy groceries', description: 'Milk and eggs' },
-  { id: 2, title: 'Call mom', description: null },
-  { id: 3, title: 'Exercise', description: 'Go for a run' },
+  { id: '1', title: 'Buy groceries', description: 'Milk and eggs' },
+  { id: '2', title: 'Call mom', description: null },
+  { id: '3', title: 'Exercise', description: 'Go for a run' },
 ]
 
 const translated = await translate.objects(todos, {
   fields: ['title', 'description'],
   to: 'he',
   context: 'task management app',
+  resourceType: 'todo',
+  resourceIdField: 'id',   // Each item's ID is used for caching
 })
 ```
 
 **Features:**
-- Batches all text fields into a single translation call
+- Batches all text fields into a single translation call (or per-field when using resource caching)
 - Skips null/undefined/empty fields automatically
 - Returns original array on error (with console.error log)
 - Preserves object structure and non-translated fields
+- Resource-based caching with `resourceType` and `resourceIdField`
 
 ### `translate.setManual(params)`
 

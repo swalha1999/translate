@@ -56,6 +56,8 @@ export interface ObjectTranslateParams<T, K extends StringKeys<T>> {
   to: SupportedLanguage
   from?: SupportedLanguage
   context?: string
+  resourceType?: string
+  resourceIdField?: keyof T
 }
 
 export function createTranslate(config: TranslateConfig) {

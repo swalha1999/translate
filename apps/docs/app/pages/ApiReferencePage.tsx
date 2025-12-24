@@ -68,21 +68,25 @@ const results = await translate.batch({
   to: SupportedLanguage     // Target language
   from?: SupportedLanguage  // Source language (auto-detect if omitted)
   context?: string          // Hint for AI translation
+  resourceType?: string     // For resource-based caching
+  resourceIdField?: keyof T // Field containing the resource ID
 }
 
 const todo = {
-  id: 1,
+  id: '123',
   title: 'Buy groceries',
   description: 'Milk, eggs, and bread',
   priority: 5,
 }
 
 const translated = await translate.object(todo, {
-  fields: ['title', 'description'], // Only string fields allowed
+  fields: ['title', 'description'],
   to: 'ar',
   context: 'task management',
+  resourceType: 'todo',
+  resourceIdField: 'id',  // Uses todo.id for caching
 })
-// → { id: 1, title: 'شراء البقالة', description: '...', priority: 5 }
+// → { id: '123', title: 'شراء البقالة', description: '...', priority: 5 }
 
 // On error: logs to console and returns original object unchanged`}
         />
@@ -96,19 +100,21 @@ const translated = await translate.object(todo, {
         <CodeBlock
           language="typescript"
           code={`const todos = [
-  { id: 1, title: 'Buy groceries', description: 'Milk and eggs' },
-  { id: 2, title: 'Call mom', description: null },
-  { id: 3, title: 'Exercise', description: 'Go for a run' },
+  { id: '1', title: 'Buy groceries', description: 'Milk and eggs' },
+  { id: '2', title: 'Call mom', description: null },
+  { id: '3', title: 'Exercise', description: 'Go for a run' },
 ]
 
 const translated = await translate.objects(todos, {
   fields: ['title', 'description'],
   to: 'he',
   context: 'task management app',
+  resourceType: 'todo',
+  resourceIdField: 'id',  // Each item's id used for caching
 })
 
 // Features:
-// - Batches all text fields into a single translation call
+// - Resource-based caching with resourceType + resourceIdField
 // - Skips null/undefined/empty fields automatically
 // - Returns original array on error (with console.error log)
 // - Preserves object structure and non-translated fields`}

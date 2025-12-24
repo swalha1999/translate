@@ -8,7 +8,7 @@ export function ExamplesPage() {
       <section className="mb-12">
         <h2 className="text-2xl font-semibold mb-4 text-zinc-200">API Route Handler</h2>
         <p className="text-zinc-400 mb-4">
-          Translate content in your API based on the requested locale. Using <code className="text-emerald-400">translate.object()</code> for clean one-liner translation.
+          Translate content in your API based on the requested locale. Using <code className="text-emerald-400">translate.object()</code> for clean one-liner translation with resource caching.
         </p>
         <CodeBlock
           language="typescript"
@@ -21,11 +21,13 @@ const getProperty = async ({ id, locale }) => {
 
   if (locale === 'en') return property
 
-  // One-liner! Type-safe field translation
+  // One-liner! Type-safe field translation with resource caching
   return translate.object(property, {
     fields: ['title', 'description'],
     to: locale,
     context: 'real estate listing',
+    resourceType: 'property',
+    resourceIdField: 'id',  // Uses property.id for caching
   })
 }`}
         />
@@ -47,11 +49,13 @@ const getTodos = async ({ userId, locale }) => {
 
   if (locale === 'en') return todos
 
-  // Translates all todos in one batched call
+  // Translates all todos with per-item resource caching
   return translate.objects(todos, {
     fields: ['title', 'description'],
     to: locale,
     context: 'task management application',
+    resourceType: 'todo',
+    resourceIdField: 'id',  // Each todo's id used for caching
   })
 }
 
