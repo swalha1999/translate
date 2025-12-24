@@ -14,6 +14,12 @@ vi.mock('../providers/ai-sdk', () => ({
         'Goodbye': 'להתראות',
         'Luxury apartment': 'דירת יוקרה',
         'flat': 'דירה',
+        'Buy groceries': 'לקנות מצרכים',
+        'Milk and eggs': 'חלב וביצים',
+        'Call mom': 'להתקשר לאמא',
+        'Wish her happy birthday': 'לאחל לה יום הולדת שמח',
+        'Fix the bug': 'לתקן את הבאג',
+        'In the login page': 'בדף ההתחברות',
       },
       ar: {
         'Hello': 'مرحبا',
@@ -21,6 +27,12 @@ vi.mock('../providers/ai-sdk', () => ({
         'Goodbye': 'وداعا',
         'Luxury apartment': 'شقة فاخرة',
         'flat': 'شقة',
+        'Buy groceries': 'شراء البقالة',
+        'Milk and eggs': 'حليب وبيض',
+        'Call mom': 'اتصل بأمي',
+        'Wish her happy birthday': 'تمنى لها عيد ميلاد سعيد',
+        'Fix the bug': 'إصلاح الخطأ',
+        'In the login page': 'في صفحة تسجيل الدخول',
       },
     }
 
@@ -352,6 +364,237 @@ describe('Integration Tests', () => {
       expect(typeof translate.clearResourceCache).toBe('function')
       expect(typeof translate.getCacheStats).toBe('function')
       expect(typeof translate.isRTL).toBe('function')
+      expect(typeof translate.object).toBe('function')
+      expect(typeof translate.objects).toBe('function')
+    })
+  })
+
+  describe('Object Translation Workflow', () => {
+    it('should translate single object fields to Hebrew', async () => {
+      const todo = {
+        id: '1',
+        title: 'Buy groceries',
+        description: 'Milk and eggs',
+        done: false,
+      }
+
+      const translated = await translate.object(todo, {
+        fields: ['title', 'description'],
+        to: 'he',
+      })
+
+      expect(translated.id).toBe('1')
+      expect(translated.title).toBe('לקנות מצרכים')
+      expect(translated.description).toBe('חלב וביצים')
+      expect(translated.done).toBe(false)
+    })
+
+    it('should translate single object fields to Arabic', async () => {
+      const todo = {
+        id: '1',
+        title: 'Buy groceries',
+        description: 'Milk and eggs',
+        done: false,
+      }
+
+      const translated = await translate.object(todo, {
+        fields: ['title', 'description'],
+        to: 'ar',
+      })
+
+      expect(translated.id).toBe('1')
+      expect(translated.title).toBe('شراء البقالة')
+      expect(translated.description).toBe('حليب وبيض')
+      expect(translated.done).toBe(false)
+    })
+
+    it('should translate object with resource caching', async () => {
+      const todo = {
+        id: '123',
+        title: 'Fix the bug',
+        description: 'In the login page',
+      }
+
+      const translated = await translate.object(todo, {
+        fields: ['title', 'description'],
+        to: 'he',
+        resourceType: 'todo',
+        resourceIdField: 'id',
+      })
+
+      expect(translated.title).toBe('לתקן את הבאג')
+      expect(translated.description).toBe('בדף ההתחברות')
+
+      // Verify resource-based cache was created
+      const stats = await translate.getCacheStats()
+      expect(stats.totalEntries).toBe(2)
+    })
+
+    it('should skip null/undefined fields', async () => {
+      const todo = {
+        id: '1',
+        title: 'Buy groceries',
+        description: null as string | null,
+      }
+
+      const translated = await translate.object(todo, {
+        fields: ['title', 'description'],
+        to: 'he',
+      })
+
+      expect(translated.title).toBe('לקנות מצרכים')
+      expect(translated.description).toBeNull()
+    })
+
+    it('should return original object if no fields to translate', async () => {
+      const todo = {
+        id: '1',
+        title: '',
+        description: '   ',
+      }
+
+      const translated = await translate.object(todo, {
+        fields: ['title', 'description'],
+        to: 'he',
+      })
+
+      expect(translated).toEqual(todo)
+    })
+  })
+
+  describe('Objects Array Translation Workflow', () => {
+    it('should translate array of objects to Hebrew', async () => {
+      const todos = [
+        { id: '1', title: 'Buy groceries', description: 'Milk and eggs' },
+        { id: '2', title: 'Call mom', description: 'Wish her happy birthday' },
+      ]
+
+      const translated = await translate.objects(todos, {
+        fields: ['title', 'description'],
+        to: 'he',
+      })
+
+      expect(translated[0].id).toBe('1')
+      expect(translated[0].title).toBe('לקנות מצרכים')
+      expect(translated[0].description).toBe('חלב וביצים')
+
+      expect(translated[1].id).toBe('2')
+      expect(translated[1].title).toBe('להתקשר לאמא')
+      expect(translated[1].description).toBe('לאחל לה יום הולדת שמח')
+    })
+
+    it('should translate array of objects to Arabic', async () => {
+      const todos = [
+        { id: '1', title: 'Buy groceries', description: 'Milk and eggs' },
+        { id: '2', title: 'Call mom', description: 'Wish her happy birthday' },
+      ]
+
+      const translated = await translate.objects(todos, {
+        fields: ['title', 'description'],
+        to: 'ar',
+      })
+
+      expect(translated[0].title).toBe('شراء البقالة')
+      expect(translated[0].description).toBe('حليب وبيض')
+
+      expect(translated[1].title).toBe('اتصل بأمي')
+      expect(translated[1].description).toBe('تمنى لها عيد ميلاد سعيد')
+    })
+
+    it('should translate array with resource caching', async () => {
+      const todos = [
+        { id: '1', title: 'Buy groceries', description: 'Milk and eggs' },
+        { id: '2', title: 'Call mom', description: 'Wish her happy birthday' },
+      ]
+
+      const translated = await translate.objects(todos, {
+        fields: ['title', 'description'],
+        to: 'he',
+        resourceType: 'todo',
+        resourceIdField: 'id',
+      })
+
+      expect(translated[0].title).toBe('לקנות מצרכים')
+      expect(translated[1].title).toBe('להתקשר לאמא')
+
+      // Each item has 2 fields = 4 cache entries
+      const stats = await translate.getCacheStats()
+      expect(stats.totalEntries).toBe(4)
+    })
+
+    it('should handle mixed null/undefined fields in array', async () => {
+      const todos = [
+        { id: '1', title: 'Buy groceries', description: null as string | null },
+        { id: '2', title: 'Call mom', description: 'Wish her happy birthday' },
+      ]
+
+      const translated = await translate.objects(todos, {
+        fields: ['title', 'description'],
+        to: 'he',
+      })
+
+      expect(translated[0].title).toBe('לקנות מצרכים')
+      expect(translated[0].description).toBeNull()
+
+      expect(translated[1].title).toBe('להתקשר לאמא')
+      expect(translated[1].description).toBe('לאחל לה יום הולדת שמח')
+    })
+
+    it('should return original array if empty', async () => {
+      const todos: { id: string; title: string }[] = []
+
+      const translated = await translate.objects(todos, {
+        fields: ['title'],
+        to: 'he',
+      })
+
+      expect(translated).toEqual([])
+    })
+
+    it('should return original array if no texts to translate', async () => {
+      const todos = [
+        { id: '1', title: '', description: '' },
+        { id: '2', title: '   ', description: null as string | null },
+      ]
+
+      const translated = await translate.objects(todos, {
+        fields: ['title', 'description'],
+        to: 'he',
+      })
+
+      expect(translated).toEqual(todos)
+    })
+  })
+
+  describe('Object Translation with Manual Overrides', () => {
+    it('should respect manual overrides in object translation', async () => {
+      // Set manual override first
+      await translate.setManual({
+        text: 'Buy groceries',
+        translatedText: 'קניות בסופר',
+        to: 'he',
+        resourceType: 'todo',
+        resourceId: '1',
+        field: 'title',
+      })
+
+      const todo = {
+        id: '1',
+        title: 'Buy groceries',
+        description: 'Milk and eggs',
+      }
+
+      const translated = await translate.object(todo, {
+        fields: ['title', 'description'],
+        to: 'he',
+        resourceType: 'todo',
+        resourceIdField: 'id',
+      })
+
+      // Should use manual override for title
+      expect(translated.title).toBe('קניות בסופר')
+      // Should use AI translation for description
+      expect(translated.description).toBe('חלב וביצים')
     })
   })
 })
