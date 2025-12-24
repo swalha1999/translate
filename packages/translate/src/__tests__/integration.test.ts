@@ -596,5 +596,481 @@ describe('Integration Tests', () => {
       // Should use AI translation for description
       expect(translated.description).toBe('חלב וביצים')
     })
+
+    it('should respect manual overrides in objects array translation', async () => {
+      await translate.setManual({
+        text: 'Call mom',
+        translatedText: 'התקשר לאמא שלך',
+        to: 'he',
+        resourceType: 'todo',
+        resourceId: '2',
+        field: 'title',
+      })
+
+      const todos = [
+        { id: '1', title: 'Buy groceries' },
+        { id: '2', title: 'Call mom' },
+      ]
+
+      const translated = await translate.objects(todos, {
+        fields: ['title'],
+        to: 'he',
+        resourceType: 'todo',
+        resourceIdField: 'id',
+      })
+
+      expect(translated[0].title).toBe('לקנות מצרכים')
+      expect(translated[1].title).toBe('התקשר לאמא שלך') // Manual override
+    })
+  })
+
+  describe('Object Translation Caching', () => {
+    it('should cache object translations and reuse on second call', async () => {
+      const todo = { id: '1', title: 'Buy groceries', description: 'Milk and eggs' }
+
+      // First call
+      await translate.object(todo, {
+        fields: ['title', 'description'],
+        to: 'he',
+      })
+
+      const stats1 = await translate.getCacheStats()
+      expect(stats1.totalEntries).toBe(2)
+
+      // Second call - should use cache
+      const translated = await translate.object(todo, {
+        fields: ['title', 'description'],
+        to: 'he',
+      })
+
+      expect(translated.title).toBe('לקנות מצרכים')
+      expect(translated.description).toBe('חלב וביצים')
+
+      // Cache should not grow
+      const stats2 = await translate.getCacheStats()
+      expect(stats2.totalEntries).toBe(2)
+    })
+
+    it('should cache objects array translations', async () => {
+      const todos = [
+        { id: '1', title: 'Buy groceries' },
+        { id: '2', title: 'Call mom' },
+      ]
+
+      await translate.objects(todos, { fields: ['title'], to: 'he' })
+      const stats1 = await translate.getCacheStats()
+      expect(stats1.totalEntries).toBe(2)
+
+      // Second call
+      await translate.objects(todos, { fields: ['title'], to: 'he' })
+      const stats2 = await translate.getCacheStats()
+      expect(stats2.totalEntries).toBe(2) // No new entries
+    })
+
+    it('should create separate cache entries for different languages', async () => {
+      const todo = { id: '1', title: 'Buy groceries' }
+
+      await translate.object(todo, { fields: ['title'], to: 'he' })
+      await translate.object(todo, { fields: ['title'], to: 'ar' })
+
+      const stats = await translate.getCacheStats()
+      expect(stats.totalEntries).toBe(2)
+      expect(stats.byLanguage.he).toBe(1)
+      expect(stats.byLanguage.ar).toBe(1)
+    })
+
+    it('should clear resource cache and require re-translation', async () => {
+      const todo = { id: '123', title: 'Fix the bug' }
+
+      await translate.object(todo, {
+        fields: ['title'],
+        to: 'he',
+        resourceType: 'todo',
+        resourceIdField: 'id',
+      })
+
+      const stats1 = await translate.getCacheStats()
+      expect(stats1.totalEntries).toBe(1)
+
+      // Clear resource cache
+      await translate.clearResourceCache('todo', '123')
+
+      const stats2 = await translate.getCacheStats()
+      expect(stats2.totalEntries).toBe(0)
+    })
+  })
+
+  describe('Object Translation with Context', () => {
+    it('should pass context to translation', async () => {
+      const todo = { id: '1', title: 'Hello', description: 'World' }
+
+      const translated = await translate.object(todo, {
+        fields: ['title', 'description'],
+        to: 'he',
+        context: 'greeting in a chat app',
+      })
+
+      expect(translated.title).toBe('שלום')
+      expect(translated.description).toBe('עולם')
+    })
+
+    it('should pass context in objects array translation', async () => {
+      const todos = [
+        { id: '1', title: 'Hello' },
+        { id: '2', title: 'Goodbye' },
+      ]
+
+      const translated = await translate.objects(todos, {
+        fields: ['title'],
+        to: 'ar',
+        context: 'greetings',
+      })
+
+      expect(translated[0].title).toBe('مرحبا')
+      expect(translated[1].title).toBe('وداعا')
+    })
+  })
+
+  describe('Object Translation with Source Language', () => {
+    it('should use explicit source language', async () => {
+      const todo = { id: '1', title: 'Hello' }
+
+      const translated = await translate.object(todo, {
+        fields: ['title'],
+        to: 'he',
+        from: 'en',
+      })
+
+      expect(translated.title).toBe('שלום')
+    })
+
+    it('should use explicit source language in array', async () => {
+      const todos = [
+        { id: '1', title: 'Hello' },
+        { id: '2', title: 'World' },
+      ]
+
+      const translated = await translate.objects(todos, {
+        fields: ['title'],
+        to: 'ar',
+        from: 'en',
+      })
+
+      expect(translated[0].title).toBe('مرحبا')
+      expect(translated[1].title).toBe('عالم')
+    })
+  })
+
+  describe('Object Translation Preserves Non-String Fields', () => {
+    it('should preserve numbers, booleans, and other types', async () => {
+      const todo = {
+        id: '1',
+        title: 'Buy groceries',
+        priority: 5,
+        done: false,
+        createdAt: new Date('2024-01-01'),
+        tags: ['shopping', 'food'],
+        metadata: { urgent: true },
+      }
+
+      const translated = await translate.object(todo, {
+        fields: ['title'],
+        to: 'he',
+      })
+
+      expect(translated.title).toBe('לקנות מצרכים')
+      expect(translated.priority).toBe(5)
+      expect(translated.done).toBe(false)
+      expect(translated.createdAt).toEqual(new Date('2024-01-01'))
+      expect(translated.tags).toEqual(['shopping', 'food'])
+      expect(translated.metadata).toEqual({ urgent: true })
+    })
+
+    it('should preserve non-string fields in array', async () => {
+      const todos = [
+        { id: '1', title: 'Hello', count: 10, active: true },
+        { id: '2', title: 'World', count: 20, active: false },
+      ]
+
+      const translated = await translate.objects(todos, {
+        fields: ['title'],
+        to: 'he',
+      })
+
+      expect(translated[0].count).toBe(10)
+      expect(translated[0].active).toBe(true)
+      expect(translated[1].count).toBe(20)
+      expect(translated[1].active).toBe(false)
+    })
+  })
+
+  describe('Object Translation with Numeric IDs', () => {
+    it('should handle numeric resourceIdField', async () => {
+      const todo = {
+        id: 123,
+        title: 'Buy groceries',
+      }
+
+      const translated = await translate.object(todo, {
+        fields: ['title'],
+        to: 'he',
+        resourceType: 'todo',
+        resourceIdField: 'id',
+      })
+
+      expect(translated.title).toBe('לקנות מצרכים')
+
+      const stats = await translate.getCacheStats()
+      expect(stats.totalEntries).toBe(1)
+    })
+
+    it('should handle numeric IDs in array', async () => {
+      const todos = [
+        { id: 1, title: 'Buy groceries' },
+        { id: 2, title: 'Call mom' },
+      ]
+
+      const translated = await translate.objects(todos, {
+        fields: ['title'],
+        to: 'he',
+        resourceType: 'todo',
+        resourceIdField: 'id',
+      })
+
+      expect(translated[0].title).toBe('לקנות מצרכים')
+      expect(translated[1].title).toBe('להתקשר לאמא')
+    })
+  })
+
+  describe('Object Translation Concurrent Requests', () => {
+    it('should handle concurrent object translations', async () => {
+      const todo = { id: '1', title: 'Hello', description: 'World' }
+
+      const [heResult, arResult] = await Promise.all([
+        translate.object(todo, { fields: ['title', 'description'], to: 'he' }),
+        translate.object(todo, { fields: ['title', 'description'], to: 'ar' }),
+      ])
+
+      expect(heResult.title).toBe('שלום')
+      expect(heResult.description).toBe('עולם')
+      expect(arResult.title).toBe('مرحبا')
+      expect(arResult.description).toBe('عالم')
+    })
+
+    it('should handle concurrent objects array translations', async () => {
+      const todos = [
+        { id: '1', title: 'Hello' },
+        { id: '2', title: 'Goodbye' },
+      ]
+
+      const [heResult, arResult] = await Promise.all([
+        translate.objects(todos, { fields: ['title'], to: 'he' }),
+        translate.objects(todos, { fields: ['title'], to: 'ar' }),
+      ])
+
+      expect(heResult[0].title).toBe('שלום')
+      expect(heResult[1].title).toBe('להתראות')
+      expect(arResult[0].title).toBe('مرحبا')
+      expect(arResult[1].title).toBe('وداعا')
+    })
+  })
+
+  describe('Object Translation Edge Cases', () => {
+    it('should handle object with only one field', async () => {
+      const todo = { id: '1', title: 'Hello' }
+
+      const translated = await translate.object(todo, {
+        fields: ['title'],
+        to: 'he',
+      })
+
+      expect(translated.title).toBe('שלום')
+    })
+
+    it('should handle translating subset of available string fields', async () => {
+      const todo = {
+        id: '1',
+        title: 'Hello',
+        description: 'World',
+        notes: 'Goodbye',
+      }
+
+      const translated = await translate.object(todo, {
+        fields: ['title'], // Only translate title
+        to: 'he',
+      })
+
+      expect(translated.title).toBe('שלום')
+      expect(translated.description).toBe('World') // Unchanged
+      expect(translated.notes).toBe('Goodbye') // Unchanged
+    })
+
+    it('should handle whitespace-only strings as empty', async () => {
+      const todo = { id: '1', title: '   ', description: '\t\n' }
+
+      const translated = await translate.object(todo, {
+        fields: ['title', 'description'],
+        to: 'he',
+      })
+
+      // Should return original since nothing to translate
+      expect(translated.title).toBe('   ')
+      expect(translated.description).toBe('\t\n')
+    })
+
+    it('should handle very long text', async () => {
+      const longText = 'Hello '.repeat(100).trim()
+      const todo = { id: '1', title: longText }
+
+      const translated = await translate.object(todo, {
+        fields: ['title'],
+        to: 'he',
+      })
+
+      // Mock returns [he] prefix for unknown texts
+      expect(translated.title).toBe(`[he] ${longText}`)
+    })
+
+    it('should handle special characters in text', async () => {
+      const todo = { id: '1', title: 'Hello! @#$%^&*()' }
+
+      const translated = await translate.object(todo, {
+        fields: ['title'],
+        to: 'he',
+      })
+
+      expect(translated.title).toBe('[he] Hello! @#$%^&*()')
+    })
+
+    it('should handle unicode in source text', async () => {
+      const todo = { id: '1', title: 'Hello 你好 مرحبا' }
+
+      const translated = await translate.object(todo, {
+        fields: ['title'],
+        to: 'he',
+      })
+
+      expect(translated.title).toBe('[he] Hello 你好 مرحبا')
+    })
+  })
+
+  describe('Object Translation Large Arrays', () => {
+    it('should handle large arrays efficiently', async () => {
+      const todos = Array.from({ length: 50 }, (_, i) => ({
+        id: String(i + 1),
+        title: i % 2 === 0 ? 'Hello' : 'World',
+      }))
+
+      const translated = await translate.objects(todos, {
+        fields: ['title'],
+        to: 'he',
+      })
+
+      expect(translated.length).toBe(50)
+      expect(translated[0].title).toBe('שלום')
+      expect(translated[1].title).toBe('עולם')
+      expect(translated[48].title).toBe('שלום')
+      expect(translated[49].title).toBe('עולם')
+    })
+
+    it('should handle array with many fields per object', async () => {
+      const items = [
+        {
+          id: '1',
+          field1: 'Hello',
+          field2: 'World',
+          field3: 'Goodbye',
+          field4: 'Hello',
+          field5: 'World',
+        },
+      ]
+
+      const translated = await translate.objects(items, {
+        fields: ['field1', 'field2', 'field3', 'field4', 'field5'],
+        to: 'he',
+      })
+
+      expect(translated[0].field1).toBe('שלום')
+      expect(translated[0].field2).toBe('עולם')
+      expect(translated[0].field3).toBe('להתראות')
+      expect(translated[0].field4).toBe('שלום')
+      expect(translated[0].field5).toBe('עולם')
+    })
+  })
+
+  describe('Object Translation Both Languages Sequential', () => {
+    it('should translate same object to Hebrew then Arabic', async () => {
+      const todo = { id: '1', title: 'Hello', description: 'World' }
+
+      const heTranslated = await translate.object(todo, {
+        fields: ['title', 'description'],
+        to: 'he',
+      })
+
+      const arTranslated = await translate.object(todo, {
+        fields: ['title', 'description'],
+        to: 'ar',
+      })
+
+      expect(heTranslated.title).toBe('שלום')
+      expect(heTranslated.description).toBe('עולם')
+      expect(arTranslated.title).toBe('مرحبا')
+      expect(arTranslated.description).toBe('عالم')
+    })
+
+    it('should translate array to Hebrew then Arabic', async () => {
+      const todos = [
+        { id: '1', title: 'Hello' },
+        { id: '2', title: 'Goodbye' },
+      ]
+
+      const heTranslated = await translate.objects(todos, {
+        fields: ['title'],
+        to: 'he',
+      })
+
+      const arTranslated = await translate.objects(todos, {
+        fields: ['title'],
+        to: 'ar',
+      })
+
+      expect(heTranslated[0].title).toBe('שלום')
+      expect(heTranslated[1].title).toBe('להתראות')
+      expect(arTranslated[0].title).toBe('مرحبا')
+      expect(arTranslated[1].title).toBe('وداعا')
+
+      // Should have 4 cache entries (2 texts × 2 languages)
+      const stats = await translate.getCacheStats()
+      expect(stats.totalEntries).toBe(4)
+    })
+  })
+
+  describe('Object Translation Does Not Mutate Original', () => {
+    it('should not mutate original object', async () => {
+      const original = { id: '1', title: 'Hello', description: 'World' }
+      const originalCopy = { ...original }
+
+      await translate.object(original, {
+        fields: ['title', 'description'],
+        to: 'he',
+      })
+
+      expect(original).toEqual(originalCopy)
+    })
+
+    it('should not mutate original array', async () => {
+      const original = [
+        { id: '1', title: 'Hello' },
+        { id: '2', title: 'World' },
+      ]
+      const originalCopy = original.map(o => ({ ...o }))
+
+      await translate.objects(original, {
+        fields: ['title'],
+        to: 'he',
+      })
+
+      expect(original).toEqual(originalCopy)
+    })
   })
 })
