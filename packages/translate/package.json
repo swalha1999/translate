@@ -1,6 +1,6 @@
 {
   "name": "@swalha1999/translate",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "AI-powered translation for user-generated content with intelligent caching",
   "author": "swalha1999",
   "repository": {
@@ -61,6 +61,17 @@
       "optional": true
     }
   },
-  "keywords": ["translation", "ai", "openai", "anthropic", "gemini", "mistral", "groq", "cache", "ugc", "i18n"],
+  "keywords": [
+    "translation",
+    "ai",
+    "openai",
+    "anthropic",
+    "gemini",
+    "mistral",
+    "groq",
+    "cache",
+    "ugc",
+    "i18n"
+  ],
   "license": "MIT"
 }

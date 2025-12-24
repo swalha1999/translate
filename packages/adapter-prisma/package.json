@@ -1,6 +1,6 @@
 {
   "name": "@swalha1999/translate-adapter-prisma",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Prisma adapter for @swalha1999/translate",
   "author": "swalha1999",
   "repository": {
@@ -44,6 +44,10 @@
     "tsdown": "^0.9.5",
     "typescript": "^5.5.0"
   },
-  "keywords": ["swalha1999-translate", "prisma", "adapter"],
+  "keywords": [
+    "swalha1999-translate",
+    "prisma",
+    "adapter"
+  ],
   "license": "MIT"
 }
