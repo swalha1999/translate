@@ -46,7 +46,6 @@ export async function translateWithAI(params: {
       model,
       prompt,
       temperature,
-      maxTokens: text.length * 3,
     })
 
     return {
@@ -65,7 +64,6 @@ export async function translateWithAI(params: {
     model,
     prompt,
     temperature,
-    maxTokens: text.length * 3 + 50,
   })
 
   try {
@@ -97,7 +95,6 @@ export async function detectLanguageWithAI(params: {
     model,
     prompt: `What language is this? Reply with only: en, ar, he, or ru.\n\nText: ${text}`,
     temperature,
-    maxTokens: 5,
   })
 
   const cleanDetected = detected.trim().toLowerCase()

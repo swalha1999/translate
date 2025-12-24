@@ -134,22 +134,6 @@ describe('AI SDK Provider', () => {
         expect(callArgs.temperature).toBe(0.1)
       })
 
-      it('should set appropriate maxTokens based on text length', async () => {
-        vi.mocked(generateText).mockResolvedValue({
-          text: 'שלום',
-        } as any)
-
-        await translateWithAI({
-          model: mockModel,
-          text: 'Hello world',
-          to: 'he',
-          from: 'en',
-        })
-
-        const callArgs = vi.mocked(generateText).mock.calls[0][0]
-        expect(callArgs.maxTokens).toBe(11 * 3) // text.length * 3
-      })
-
       it('should handle unknown language codes gracefully', async () => {
         vi.mocked(generateText).mockResolvedValue({
           text: 'Bonjour',
@@ -271,20 +255,6 @@ describe('AI SDK Provider', () => {
         expect(result.text).toBe('שלום')
       })
 
-      it('should add extra tokens for JSON overhead', async () => {
-        vi.mocked(generateText).mockResolvedValue({
-          text: '{"from": "en", "text": "שלום"}',
-        } as any)
-
-        await translateWithAI({
-          model: mockModel,
-          text: 'Hello',
-          to: 'he',
-        })
-
-        const callArgs = vi.mocked(generateText).mock.calls[0][0]
-        expect(callArgs.maxTokens).toBe(5 * 3 + 50) // text.length * 3 + 50
-      })
     })
   })
 
@@ -354,20 +324,6 @@ describe('AI SDK Provider', () => {
 
       const callArgs = vi.mocked(generateText).mock.calls[0][0]
       expect(callArgs.temperature).toBe(0)
-    })
-
-    it('should use maxTokens of 5', async () => {
-      vi.mocked(generateText).mockResolvedValue({
-        text: 'en',
-      } as any)
-
-      await detectLanguageWithAI({
-        model: mockModel,
-        text: 'Hello',
-      })
-
-      const callArgs = vi.mocked(generateText).mock.calls[0][0]
-      expect(callArgs.maxTokens).toBe(5)
     })
 
     it('should detect all supported languages', async () => {

@@ -132,6 +132,7 @@ describe('core', () => {
           targetLanguage: 'he',
           translatedText: 'Hello',
           provider: 'openai',
+          isManualOverride: false,
         })
 
         const result = await translateText(adapter, config, { text: 'Hello', to: 'he' })

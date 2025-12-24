@@ -17,10 +17,10 @@ export interface ModelInfo {
 }
 
 export function getModelInfo(model: LanguageModel): ModelInfo {
-  const modelId = model.modelId
-  // Extract provider from model - the modelId typically starts with provider prefix
-  // e.g., 'gpt-4o-mini' for OpenAI, 'claude-3-haiku' for Anthropic
-  const provider = model.provider ?? 'unknown'
+  // Handle different model formats - could be string or object with various shapes
+  const modelAny = model as any
+  const modelId = modelAny.modelId ?? String(model)
+  const provider = modelAny.provider ?? 'unknown'
 
   return { provider, modelId }
 }
