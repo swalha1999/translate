@@ -6,3 +6,10 @@ export type { CacheAdapter, CacheEntry } from './adapters/types'
 export { createMemoryAdapter } from './adapters/memory'
 
 export { isRTL, getLanguageName } from './utils'
+
+// Re-export AI providers for simpler setup
+export { openai, anthropic, google, mistral, groq } from './providers'
+
+// Export model utilities
+export type { ModelInfo } from './providers/types'
+export { getModelInfo } from './providers/types'

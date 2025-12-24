@@ -25,7 +25,12 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "openai": "^4.0.0"
+    "ai": "^6.0.3",
+    "@ai-sdk/openai": "^3.0.1",
+    "@ai-sdk/anthropic": "^3.0.1",
+    "@ai-sdk/google": "^3.0.1",
+    "@ai-sdk/mistral": "^3.0.1",
+    "@ai-sdk/groq": "^3.0.1"
   },
   "devDependencies": {
     "tsdown": "^0.9.5",
@@ -40,6 +45,6 @@
       "optional": true
     }
   },
-  "keywords": ["translation", "ai", "openai", "cache", "ugc", "i18n"],
+  "keywords": ["translation", "ai", "openai", "anthropic", "gemini", "mistral", "groq", "cache", "ugc", "i18n"],
   "license": "MIT"
 }

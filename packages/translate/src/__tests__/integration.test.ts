@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createTranslate, createMemoryAdapter } from '../index'
 import type { CacheAdapter } from '../adapters/types'
+import type { LanguageModel } from 'ai'
 
-// Mock the OpenAI provider for controlled testing
-vi.mock('../providers/openai', () => ({
-  translateWithOpenAI: vi.fn().mockImplementation(async ({ text, to, from }) => {
+// Mock the AI SDK provider
+vi.mock('../providers/ai-sdk', () => ({
+  translateWithAI: vi.fn().mockImplementation(async ({ text, to, from }) => {
     // Simulate realistic translations
     const translations: Record<string, Record<string, string>> = {
       he: {
@@ -26,7 +27,7 @@ vi.mock('../providers/openai', () => ({
     const translated = translations[to]?.[text] ?? `[${to}] ${text}`
     return { text: translated, from: from ?? 'en' }
   }),
-  detectLanguageWithOpenAI: vi.fn().mockImplementation(async ({ text }) => {
+  detectLanguageWithAI: vi.fn().mockImplementation(async ({ text }) => {
     // Simple language detection based on character ranges
     if (/[\u0590-\u05FF]/.test(text)) return { language: 'he', confidence: 0.95 }
     if (/[\u0600-\u06FF]/.test(text)) return { language: 'ar', confidence: 0.95 }
@@ -34,6 +35,16 @@ vi.mock('../providers/openai', () => ({
     return { language: 'en', confidence: 0.95 }
   }),
 }))
+
+vi.mock('../providers/types', () => ({
+  getModelInfo: vi.fn(() => ({ provider: 'openai', modelId: 'gpt-4o-mini' })),
+}))
+
+// Create a mock model
+const mockModel = {
+  modelId: 'gpt-4o-mini',
+  provider: 'openai',
+} as unknown as LanguageModel
 
 describe('Integration Tests', () => {
   let translate: ReturnType<typeof createTranslate>
@@ -44,8 +55,7 @@ describe('Integration Tests', () => {
     adapter = createMemoryAdapter()
     translate = createTranslate({
       adapter,
-      provider: 'openai',
-      apiKey: 'test-api-key',
+      model: mockModel,
       languages: ['en', 'ar', 'he', 'ru'] as const,
     })
   })

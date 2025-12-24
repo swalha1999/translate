@@ -1,20 +1,31 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createTranslate } from '../create-translate'
 import { createMemoryAdapter } from '../adapters/memory'
+import type { LanguageModel } from 'ai'
 
-// Mock the OpenAI provider
-vi.mock('../providers/openai', () => ({
-  translateWithOpenAI: vi.fn().mockImplementation(async ({ text, to, from }) => ({
+// Mock the AI SDK provider
+vi.mock('../providers/ai-sdk', () => ({
+  translateWithAI: vi.fn().mockImplementation(async ({ text, to, from }) => ({
     text: `[translated]: ${text}`,
     from: from ?? 'en',
   })),
-  detectLanguageWithOpenAI: vi.fn().mockResolvedValue({
+  detectLanguageWithAI: vi.fn().mockResolvedValue({
     language: 'en',
     confidence: 0.95,
   }),
 }))
 
-import { translateWithOpenAI } from '../providers/openai'
+vi.mock('../providers/types', () => ({
+  getModelInfo: vi.fn(() => ({ provider: 'openai', modelId: 'gpt-4o-mini' })),
+}))
+
+import { translateWithAI } from '../providers/ai-sdk'
+
+// Create a mock model
+const mockModel = {
+  modelId: 'gpt-4o-mini',
+  provider: 'openai',
+} as unknown as LanguageModel
 
 describe('Edge Cases', () => {
   let translate: ReturnType<typeof createTranslate>
@@ -23,8 +34,7 @@ describe('Edge Cases', () => {
     vi.clearAllMocks()
     translate = createTranslate({
       adapter: createMemoryAdapter(),
-      provider: 'openai',
-      apiKey: 'test-api-key',
+      model: mockModel,
       languages: ['en', 'ar', 'he', 'ru'] as const,
     })
   })
@@ -142,7 +152,7 @@ describe('Edge Cases', () => {
 
   describe('Whitespace Handling', () => {
     it('should preserve leading whitespace', async () => {
-      vi.mocked(translateWithOpenAI).mockResolvedValueOnce({
+      vi.mocked(translateWithAI).mockResolvedValueOnce({
         text: '   Hello',
         from: 'en',
       })
@@ -156,7 +166,7 @@ describe('Edge Cases', () => {
     })
 
     it('should preserve trailing whitespace', async () => {
-      vi.mocked(translateWithOpenAI).mockResolvedValueOnce({
+      vi.mocked(translateWithAI).mockResolvedValueOnce({
         text: 'Hello   ',
         from: 'en',
       })
@@ -182,21 +192,21 @@ describe('Edge Cases', () => {
   describe('Cache Edge Cases', () => {
     it('should cache texts that differ only by case separately', async () => {
       await translate.text({ text: 'Hello', to: 'he' })
-      vi.mocked(translateWithOpenAI).mockClear()
+      vi.mocked(translateWithAI).mockClear()
 
       await translate.text({ text: 'hello', to: 'he' })
 
       // Different case = different hash = new API call
-      expect(translateWithOpenAI).toHaveBeenCalledTimes(1)
+      expect(translateWithAI).toHaveBeenCalledTimes(1)
     })
 
     it('should cache texts that differ only by whitespace separately', async () => {
       await translate.text({ text: 'Hello', to: 'he' })
-      vi.mocked(translateWithOpenAI).mockClear()
+      vi.mocked(translateWithAI).mockClear()
 
       await translate.text({ text: 'Hello ', to: 'he' })
 
-      expect(translateWithOpenAI).toHaveBeenCalledTimes(1)
+      expect(translateWithAI).toHaveBeenCalledTimes(1)
     })
 
     it('should handle rapid sequential requests', async () => {
@@ -205,17 +215,17 @@ describe('Edge Cases', () => {
       }
 
       // Only first request should call API
-      expect(translateWithOpenAI).toHaveBeenCalledTimes(1)
+      expect(translateWithAI).toHaveBeenCalledTimes(1)
     })
 
     it('should handle cache after clearCache', async () => {
       await translate.text({ text: 'Hello', to: 'he' })
       await translate.clearCache()
-      vi.mocked(translateWithOpenAI).mockClear()
+      vi.mocked(translateWithAI).mockClear()
 
       await translate.text({ text: 'Hello', to: 'he' })
 
-      expect(translateWithOpenAI).toHaveBeenCalledTimes(1)
+      expect(translateWithAI).toHaveBeenCalledTimes(1)
     })
   })
 
@@ -368,7 +378,7 @@ describe('Edge Cases', () => {
 
   describe('Error Scenarios', () => {
     it('should propagate API errors', async () => {
-      vi.mocked(translateWithOpenAI).mockRejectedValueOnce(new Error('API Rate Limit'))
+      vi.mocked(translateWithAI).mockRejectedValueOnce(new Error('API Rate Limit'))
 
       await expect(
         translate.text({ text: 'Hello', to: 'he' })
@@ -376,14 +386,14 @@ describe('Edge Cases', () => {
     })
 
     it('should not cache failed translations', async () => {
-      vi.mocked(translateWithOpenAI).mockRejectedValueOnce(new Error('API Error'))
+      vi.mocked(translateWithAI).mockRejectedValueOnce(new Error('API Error'))
 
       await expect(
         translate.text({ text: 'Hello', to: 'he' })
       ).rejects.toThrow()
 
       // Clear mock and set successful response
-      vi.mocked(translateWithOpenAI).mockResolvedValueOnce({
+      vi.mocked(translateWithAI).mockResolvedValueOnce({
         text: 'שלום',
         from: 'en',
       })

@@ -1,3 +1,4 @@
+import type { LanguageModel } from 'ai'
 import type { CacheAdapter } from './adapters/types'
 import { translateText, translateBatch, detectLanguage } from './core'
 import { setManualTranslation, clearManualTranslation } from './cache'
@@ -6,10 +7,9 @@ export type SupportedLanguage = 'en' | 'ar' | 'he' | 'ru'
 
 export interface TranslateConfig {
   adapter: CacheAdapter
-  provider: 'openai'
-  apiKey: string
-  model?: string
+  model: LanguageModel
   languages: readonly SupportedLanguage[]
+  temperature?: number
 }
 
 export interface TranslateParams {

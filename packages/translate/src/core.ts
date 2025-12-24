@@ -2,7 +2,8 @@ import type { CacheAdapter } from './adapters/types'
 import type { TranslateConfig, TranslateParams, TranslateResult, BatchParams } from './create-translate'
 import { getCached, setCache } from './cache'
 import { createHashKey, createResourceKey, hasResourceInfo } from './cache-key'
-import { translateWithOpenAI, detectLanguageWithOpenAI } from './providers/openai'
+import { translateWithAI, detectLanguageWithAI } from './providers/ai-sdk'
+import { getModelInfo } from './providers/types'
 
 const inFlightRequests = new Map<string, Promise<TranslateResult>>()
 
@@ -62,14 +63,17 @@ async function executeTranslation(
 ): Promise<TranslateResult> {
   const { text, to, from, context, resourceType, resourceId, field } = params
 
-  const result = await translateWithOpenAI({
-    apiKey: config.apiKey,
-    model: config.model ?? 'gpt-4o-mini',
+  const result = await translateWithAI({
+    model: config.model,
     text,
     to,
     from,
     context,
+    temperature: config.temperature,
   })
+
+  // Get model info for cache metadata
+  const modelInfo = getModelInfo(config.model)
 
   if (result.from !== to) {
     await setCache(adapter, {
@@ -77,8 +81,8 @@ async function executeTranslation(
       sourceLanguage: result.from,
       targetLanguage: to,
       translatedText: result.text,
-      provider: config.provider,
-      model: config.model,
+      provider: modelInfo.provider,
+      model: modelInfo.modelId,
       resourceType,
       resourceId,
       field,
@@ -114,9 +118,9 @@ export async function detectLanguage(
   config: TranslateConfig,
   text: string
 ): Promise<{ language: string; confidence: number }> {
-  return detectLanguageWithOpenAI({
-    apiKey: config.apiKey,
-    model: config.model ?? 'gpt-4o-mini',
+  return detectLanguageWithAI({
+    model: config.model,
     text,
+    temperature: 0,
   })
 }
