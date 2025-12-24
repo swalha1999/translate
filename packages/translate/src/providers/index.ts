@@ -5,6 +5,9 @@ export { google } from '@ai-sdk/google'
 export { mistral } from '@ai-sdk/mistral'
 export { groq } from '@ai-sdk/groq'
 
+// Re-export AI SDK types for custom implementations
+export type { LanguageModel, GenerateTextResult } from 'ai'
+
 // Internal translation functions
 export { translateWithAI, detectLanguageWithAI } from './ai-sdk'
 

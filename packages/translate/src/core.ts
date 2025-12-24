@@ -1,5 +1,5 @@
 import type { CacheAdapter } from './adapters/types'
-import type { TranslateConfig, TranslateParams, TranslateResult, BatchParams } from './create-translate'
+import type { TranslateConfig, TranslateParams, TranslateResult, BatchParams, SupportedLanguage } from './create-translate'
 import { getCached, setCache } from './cache'
 import { createHashKey, createResourceKey, hasResourceInfo } from './cache-key'
 import { translateWithAI, detectLanguageWithAI } from './providers/ai-sdk'
@@ -26,7 +26,7 @@ export async function translateText(
   const cached = await getCached(adapter, { text, to, resourceType, resourceId, field })
   if (cached) {
     if (cached.from === to || (from && from === to)) {
-      return { text, from: cached.from, to, cached: true }
+      return { text, from: cached.from as SupportedLanguage, to, cached: true }
     }
     return {
       text: cached.text,

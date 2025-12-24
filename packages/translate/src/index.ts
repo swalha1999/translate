@@ -10,6 +10,9 @@ export { isRTL, getLanguageName } from './utils'
 // Re-export AI providers for simpler setup
 export { openai, anthropic, google, mistral, groq } from './providers'
 
+// Re-export AI SDK types for custom implementations
+export type { LanguageModel, GenerateTextResult } from './providers'
+
 // Export model utilities
 export type { ModelInfo } from './providers/types'
 export { getModelInfo } from './providers/types'
