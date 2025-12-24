@@ -1,0 +1,11 @@
+{
+  "name": "@swalha1999/config",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Shared configurations for @swalha1999 packages",
+  "exports": {
+    "./eslint": "./eslint/base.js",
+    "./typescript": "./typescript/base.json"
+  },
+  "license": "MIT"
+}

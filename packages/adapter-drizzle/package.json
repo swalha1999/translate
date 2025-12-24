@@ -1,0 +1,38 @@
+{
+  "name": "@swalha1999/translate-adapter-drizzle",
+  "version": "0.0.1",
+  "description": "Drizzle ORM adapter for @swalha1999/translate",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./schema": {
+      "import": "./dist/schema.mjs",
+      "require": "./dist/schema.js",
+      "types": "./dist/schema.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@swalha1999/translate": "workspace:*"
+  },
+  "peerDependencies": {
+    "drizzle-orm": ">=0.30.0"
+  },
+  "devDependencies": {
+    "drizzle-orm": "^0.30.0",
+    "tsdown": "^0.9.5",
+    "typescript": "^5.5.0"
+  },
+  "keywords": ["swalha1999-translate", "drizzle", "adapter"],
+  "license": "MIT"
+}

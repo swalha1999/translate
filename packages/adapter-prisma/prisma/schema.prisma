@@ -1,0 +1,24 @@
+// This is a ready-to-use Prisma schema for the translation cache.
+// Copy this model to your main Prisma schema file.
+
+model TranslationCache {
+  id              String   @id
+  sourceText      String   @map("source_text")
+  sourceLanguage  String   @map("source_language")
+  targetLanguage  String   @map("target_language")
+  translatedText  String   @map("translated_text")
+  resourceType    String?  @map("resource_type")
+  resourceId      String?  @map("resource_id")
+  field           String?
+  isManualOverride Boolean @default(false) @map("is_manual_override")
+  provider        String
+  model           String?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  lastUsedAt      DateTime @default(now()) @map("last_used_at")
+
+  @@index([targetLanguage], name: "tc_target_lang_idx")
+  @@index([resourceType, resourceId, field], name: "tc_resource_idx")
+  @@index([isManualOverride], name: "tc_manual_idx")
+  @@map("translation_cache")
+}
