@@ -3,13 +3,14 @@ import type { CacheAdapter } from './adapters/types'
 import { translateText, translateBatch, detectLanguage, translateObject, translateObjects } from './core'
 import { setManualTranslation, clearManualTranslation } from './cache'
 
-export type SupportedLanguage = 'en' | 'ar' | 'he' | 'ru'
+export type SupportedLanguage = 'en' | 'ar' | 'he' | 'ru' | 'ja' | 'ko' | 'zh' | 'hi' | 'el' | 'th' | 'fr' | 'de'
 
 export interface TranslateConfig {
   adapter: CacheAdapter
   model: LanguageModel
-  languages: readonly SupportedLanguage[]
+  languages?: readonly SupportedLanguage[]
   temperature?: number
+  defaultLanguage?: SupportedLanguage
 }
 
 export interface TranslateParams {

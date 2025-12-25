@@ -1,4 +1,4 @@
-export type SupportedLanguage = 'en' | 'ar' | 'he' | 'ru'
+export type SupportedLanguage = 'en' | 'ar' | 'he' | 'ru' | 'ja' | 'ko' | 'zh' | 'hi' | 'el' | 'th' | 'fr' | 'de'
 
 export interface TranslateParams {
   text: string
