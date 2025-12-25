@@ -28,8 +28,9 @@ export async function translateWithAI(params: {
   from?: string
   context?: string
   temperature?: number
+  verbose?: boolean
 }): Promise<{ text: string; from: string }> {
-  const { model, text, to, from, context, temperature = 0.3 } = params
+  const { model, text, to, from, context, temperature = 0.3, verbose = false } = params
 
   if (from) {
     if (from === to) {
@@ -42,11 +43,19 @@ export async function translateWithAI(params: {
       .replace('{context}', context ?? 'general content')
       .replace('{text}', text)
 
+    if (verbose) {
+      console.log('[Translate] Input:', text)
+    }
+
     const { text: translatedText } = await generateText({
       model,
       prompt,
       temperature,
     })
+
+    if (verbose) {
+      console.log('[Translate] Output:', translatedText.trim())
+    }
 
     return {
       text: translatedText.trim(),
@@ -60,6 +69,10 @@ export async function translateWithAI(params: {
     .replace('{context}', context ?? 'general content')
     .replace('{text}', text)
 
+  if (verbose) {
+    console.log('[Translate] Input:', text)
+  }
+
   const { text: responseText } = await generateText({
     model,
     prompt,
@@ -71,6 +84,10 @@ export async function translateWithAI(params: {
     const cleanResponse = responseText.replace(/```json\n?|\n?```/g, '').trim()
     const result = JSON.parse(cleanResponse)
 
+    if (verbose) {
+      console.log('[Translate] Output:', result.text?.trim() ?? text)
+    }
+
     if (result.from === to) {
       return { text, from: result.from }
     }
@@ -80,6 +97,9 @@ export async function translateWithAI(params: {
       from: result.from ?? 'en',
     }
   } catch {
+    if (verbose) {
+      console.log('[Translate] Output:', text, '(parse error, returning original)')
+    }
     return { text, from: 'en' }
   }
 }
@@ -88,8 +108,13 @@ export async function detectLanguageWithAI(params: {
   model: LanguageModel
   text: string
   temperature?: number
+  verbose?: boolean
 }): Promise<{ language: string; confidence: number }> {
-  const { model, text, temperature = 0 } = params
+  const { model, text, temperature = 0, verbose = false } = params
+
+  if (verbose) {
+    console.log('[DetectLanguage] Input:', text)
+  }
 
   const { text: detected } = await generateText({
     model,
@@ -100,8 +125,14 @@ export async function detectLanguageWithAI(params: {
   const cleanDetected = detected.trim().toLowerCase()
   const valid = ['en', 'ar', 'he', 'ru']
 
+  const language = valid.includes(cleanDetected) ? cleanDetected : 'en'
+
+  if (verbose) {
+    console.log('[DetectLanguage] Output:', language)
+  }
+
   return {
-    language: valid.includes(cleanDetected) ? cleanDetected : 'en',
+    language,
     confidence: 0.9,
   }
 }

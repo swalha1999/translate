@@ -70,6 +70,7 @@ async function executeTranslation(
     from,
     context,
     temperature: config.temperature,
+    verbose: config.verbose,
   })
 
   // Get model info for cache metadata
@@ -122,6 +123,7 @@ export async function detectLanguage(
     model: config.model,
     text,
     temperature: 0,
+    verbose: config.verbose,
   })
 }
 

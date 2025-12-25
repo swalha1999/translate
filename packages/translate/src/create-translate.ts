@@ -11,6 +11,7 @@ export interface TranslateConfig {
   languages?: readonly SupportedLanguage[]
   temperature?: number
   defaultLanguage?: SupportedLanguage
+  verbose?: boolean
 }
 
 export interface TranslateParams {
