@@ -343,4 +343,317 @@ describe('AI SDK Provider', () => {
       }
     })
   })
+
+  describe('error scenarios', () => {
+    describe('translateWithAI errors', () => {
+      it('should propagate network errors from generateText', async () => {
+        vi.mocked(generateText).mockRejectedValue(new Error('Network error: ECONNREFUSED'))
+
+        await expect(
+          translateWithAI({
+            model: mockModel,
+            text: 'Hello',
+            to: 'he',
+            from: 'en',
+          })
+        ).rejects.toThrow('Network error: ECONNREFUSED')
+      })
+
+      it('should propagate timeout errors from generateText', async () => {
+        vi.mocked(generateText).mockRejectedValue(new Error('Request timeout after 30000ms'))
+
+        await expect(
+          translateWithAI({
+            model: mockModel,
+            text: 'Hello',
+            to: 'he',
+            from: 'en',
+          })
+        ).rejects.toThrow('Request timeout')
+      })
+
+      it('should propagate rate limit errors from generateText', async () => {
+        const rateLimitError = new Error('Rate limit exceeded')
+        ;(rateLimitError as any).status = 429
+
+        vi.mocked(generateText).mockRejectedValue(rateLimitError)
+
+        await expect(
+          translateWithAI({
+            model: mockModel,
+            text: 'Hello',
+            to: 'he',
+            from: 'en',
+          })
+        ).rejects.toThrow('Rate limit exceeded')
+      })
+
+      it('should handle empty string response from generateText', async () => {
+        vi.mocked(generateText).mockResolvedValue({
+          text: '',
+        } as any)
+
+        const result = await translateWithAI({
+          model: mockModel,
+          text: 'Hello',
+          to: 'he',
+          from: 'en',
+        })
+
+        // Empty response should return empty string
+        expect(result.text).toBe('')
+      })
+
+      it('should handle null response text', async () => {
+        vi.mocked(generateText).mockResolvedValue({
+          text: null,
+        } as any)
+
+        await expect(
+          translateWithAI({
+            model: mockModel,
+            text: 'Hello',
+            to: 'he',
+            from: 'en',
+          })
+        ).rejects.toThrow()
+      })
+
+      it('should handle undefined response', async () => {
+        vi.mocked(generateText).mockResolvedValue(undefined as any)
+
+        await expect(
+          translateWithAI({
+            model: mockModel,
+            text: 'Hello',
+            to: 'he',
+            from: 'en',
+          })
+        ).rejects.toThrow()
+      })
+
+      it('should handle JSON with wrong structure in auto-detect mode', async () => {
+        vi.mocked(generateText).mockResolvedValue({
+          text: '{"translation": "שלום", "language": "he"}',
+        } as any)
+
+        const result = await translateWithAI({
+          model: mockModel,
+          text: 'Hello',
+          to: 'he',
+        })
+
+        // Should fallback to original since structure is wrong
+        expect(result.text).toBe('Hello')
+      })
+
+      it('should handle nested JSON in auto-detect mode', async () => {
+        vi.mocked(generateText).mockResolvedValue({
+          text: '{"from": "en", "text": {"nested": "value"}}',
+        } as any)
+
+        const result = await translateWithAI({
+          model: mockModel,
+          text: 'Hello',
+          to: 'he',
+        })
+
+        // Should handle non-string text gracefully
+        expect(result.from).toBe('en')
+      })
+    })
+
+    describe('detectLanguageWithAI errors', () => {
+      it('should propagate errors from generateText', async () => {
+        vi.mocked(generateText).mockRejectedValue(new Error('API error'))
+
+        await expect(
+          detectLanguageWithAI({
+            model: mockModel,
+            text: 'Hello',
+          })
+        ).rejects.toThrow('API error')
+      })
+
+      it('should handle empty response for detection', async () => {
+        vi.mocked(generateText).mockResolvedValue({
+          text: '',
+        } as any)
+
+        const result = await detectLanguageWithAI({
+          model: mockModel,
+          text: 'Hello',
+        })
+
+        // Should default to 'en' for empty response
+        expect(result.language).toBe('en')
+      })
+
+      it('should handle numeric-only text detection', async () => {
+        vi.mocked(generateText).mockResolvedValue({
+          text: 'en',
+        } as any)
+
+        const result = await detectLanguageWithAI({
+          model: mockModel,
+          text: '12345',
+        })
+
+        expect(result.language).toBe('en')
+        expect(generateText).toHaveBeenCalled()
+      })
+
+      it('should handle emoji-only text detection', async () => {
+        vi.mocked(generateText).mockResolvedValue({
+          text: 'en',
+        } as any)
+
+        const result = await detectLanguageWithAI({
+          model: mockModel,
+          text: '👋🌍🎉',
+        })
+
+        expect(result.language).toBe('en')
+      })
+
+      it('should handle very short text detection', async () => {
+        vi.mocked(generateText).mockResolvedValue({
+          text: 'en',
+        } as any)
+
+        const result = await detectLanguageWithAI({
+          model: mockModel,
+          text: 'a',
+        })
+
+        expect(result.language).toBe('en')
+      })
+    })
+  })
+
+  describe('edge case inputs', () => {
+    it('should handle text with null bytes', async () => {
+      vi.mocked(generateText).mockResolvedValue({
+        text: 'שלום',
+      } as any)
+
+      const result = await translateWithAI({
+        model: mockModel,
+        text: 'Hello\x00World',
+        to: 'he',
+        from: 'en',
+      })
+
+      expect(result.text).toBe('שלום')
+    })
+
+    it('should handle text with control characters', async () => {
+      vi.mocked(generateText).mockResolvedValue({
+        text: 'שלום',
+      } as any)
+
+      const result = await translateWithAI({
+        model: mockModel,
+        text: 'Hello\x01\x02World',
+        to: 'he',
+        from: 'en',
+      })
+
+      expect(result.text).toBe('שלום')
+    })
+
+    it('should handle text with only whitespace variations', async () => {
+      vi.mocked(generateText).mockResolvedValue({
+        text: ' ',
+      } as any)
+
+      const result = await translateWithAI({
+        model: mockModel,
+        text: '   \t\n  ',
+        to: 'he',
+        from: 'en',
+      })
+
+      expect(result.text).toBe('')
+    })
+
+    it('should handle very long text', async () => {
+      const longText = 'Hello '.repeat(10000)
+      vi.mocked(generateText).mockResolvedValue({
+        text: 'שלום '.repeat(10000).trim(),
+      } as any)
+
+      const result = await translateWithAI({
+        model: mockModel,
+        text: longText,
+        to: 'he',
+        from: 'en',
+      })
+
+      expect(result.text.length).toBeGreaterThan(0)
+    })
+
+    it('should handle mixed language text for detection', async () => {
+      vi.mocked(generateText).mockResolvedValue({
+        text: '{"from": "en", "text": "שלום mixed עולם"}',
+      } as any)
+
+      const result = await translateWithAI({
+        model: mockModel,
+        text: 'Hello mixed world',
+        to: 'he',
+      })
+
+      expect(result.from).toBe('en')
+    })
+
+    it('should handle emoji text', async () => {
+      vi.mocked(generateText).mockResolvedValue({
+        text: '👋🌍🎉',
+      } as any)
+
+      const result = await translateWithAI({
+        model: mockModel,
+        text: '👋🌍🎉',
+        to: 'he',
+        from: 'en',
+      })
+
+      expect(result.text).toBe('👋🌍🎉')
+    })
+
+    it('should handle temperature at minimum (0)', async () => {
+      vi.mocked(generateText).mockResolvedValue({
+        text: 'שלום',
+      } as any)
+
+      await translateWithAI({
+        model: mockModel,
+        text: 'Hello',
+        to: 'he',
+        from: 'en',
+        temperature: 0,
+      })
+
+      const callArgs = vi.mocked(generateText).mock.calls[0][0]
+      expect(callArgs.temperature).toBe(0)
+    })
+
+    it('should handle temperature at maximum (2)', async () => {
+      vi.mocked(generateText).mockResolvedValue({
+        text: 'שלום',
+      } as any)
+
+      await translateWithAI({
+        model: mockModel,
+        text: 'Hello',
+        to: 'he',
+        from: 'en',
+        temperature: 2,
+      })
+
+      const callArgs = vi.mocked(generateText).mock.calls[0][0]
+      expect(callArgs.temperature).toBe(2)
+    })
+  })
 })
