@@ -33,6 +33,17 @@ function createFailingAdapter(failures: {
       if (failures.get === 'malformed') return { invalid: 'data' } as any
       return storage.get(id) ?? null
     },
+    async getMany(ids: string[]) {
+      if (failures.get instanceof Error) throw failures.get
+      const result = new Map<string, CacheEntry>()
+      for (const id of ids) {
+        const entry = storage.get(id)
+        if (entry) {
+          result.set(id, entry)
+        }
+      }
+      return result
+    },
     async set(entry) {
       if (failures.set) throw failures.set
       const now = new Date()
@@ -207,6 +218,7 @@ describe('Adapter Error Handling', () => {
       let setCallCount = 0
       const adapter: CacheAdapter = {
         async get() { return null },
+        async getMany() { return new Map() },
         async set() {
           setCallCount++
           if (setCallCount === 1) throw new Error('First set failed')
@@ -249,6 +261,14 @@ describe('Adapter Error Handling', () => {
       const adapter: CacheAdapter = {
         async get(id: string) {
           return storage.get(id) ?? null
+        },
+        async getMany(ids: string[]) {
+          const result = new Map<string, CacheEntry>()
+          for (const id of ids) {
+            const entry = storage.get(id)
+            if (entry) result.set(id, entry)
+          }
+          return result
         },
         async set(entry) {
           const now = new Date()
@@ -353,6 +373,10 @@ describe('Adapter Error Handling', () => {
     it('should propagate async adapter errors', async () => {
       const adapter: CacheAdapter = {
         async get() {
+          await new Promise(resolve => setTimeout(resolve, 10))
+          throw new Error('Async get failure')
+        },
+        async getMany() {
           await new Promise(resolve => setTimeout(resolve, 10))
           throw new Error('Async get failure')
         },

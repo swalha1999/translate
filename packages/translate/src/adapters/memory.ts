@@ -8,6 +8,17 @@ export function createMemoryAdapter(): CacheAdapter {
       return cache.get(id) ?? null
     },
 
+    async getMany(ids: string[]) {
+      const result = new Map<string, CacheEntry>()
+      for (const id of ids) {
+        const entry = cache.get(id)
+        if (entry) {
+          result.set(id, entry)
+        }
+      }
+      return result
+    },
+
     async set(entry) {
       const now = new Date()
       cache.set(entry.id, {

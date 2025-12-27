@@ -229,6 +229,7 @@ describe('Configuration Validation', () => {
     it('should work with custom adapter implementing all methods', async () => {
       const customAdapter: CacheAdapter = {
         get: vi.fn().mockResolvedValue(null),
+        getMany: vi.fn().mockResolvedValue(new Map()),
         set: vi.fn().mockResolvedValue(undefined),
         touch: vi.fn().mockResolvedValue(undefined),
         delete: vi.fn().mockResolvedValue(undefined),
@@ -266,6 +267,7 @@ describe('Configuration Validation', () => {
       const setMock = vi.fn()
       const customAdapter: CacheAdapter = {
         get: vi.fn().mockResolvedValue(null),
+        getMany: vi.fn().mockResolvedValue(new Map()),
         set: setMock.mockResolvedValue(undefined),
         touch: vi.fn().mockResolvedValue(undefined),
         delete: vi.fn().mockResolvedValue(undefined),

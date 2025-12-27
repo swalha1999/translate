@@ -1,6 +1,6 @@
 import type { CacheAdapter } from './adapters/types'
 import type { TranslateConfig, TranslateParams, TranslateResult, BatchParams, SupportedLanguage, StringKeys, ObjectTranslateParams, AnalyticsEvent } from './create-translate'
-import { getCached, setCache } from './cache'
+import { getCached, getCachedBatch, setCache } from './cache'
 import { createHashKey, createResourceKey, hasResourceInfo } from './cache-key'
 import { translateWithAI, detectLanguageWithAI } from './providers/ai-sdk'
 import { getModelInfo } from './providers/types'
@@ -168,16 +168,88 @@ export async function translateBatch(
   config: TranslateConfig,
   params: BatchParams
 ): Promise<TranslateResult[]> {
-  return Promise.all(
-    params.texts.map(text =>
-      translateText(adapter, config, {
-        text,
-        to: params.to,
-        from: params.from,
-        context: params.context,
-      })
-    )
+  const { texts, to, from, context } = params
+  const startTime = Date.now()
+
+  // Filter out empty texts and track their indices
+  const itemsToLookup = texts.map((text, index) => ({ text, index }))
+    .filter(item => item.text.trim())
+
+  // Short-circuit: if from === to, return all texts as-is
+  if (from && from === to) {
+    return texts.map(text => ({ text, from, to, cached: true }))
+  }
+
+  // Batch cache lookup
+  const cachedResults = await getCachedBatch(
+    adapter,
+    itemsToLookup.map(item => ({ text: item.text })),
+    to
   )
+
+  // Build results array, translating only uncached items
+  const results: TranslateResult[] = new Array(texts.length)
+
+  // Fill in empty texts
+  for (let i = 0; i < texts.length; i++) {
+    if (!texts[i].trim()) {
+      results[i] = { text: texts[i], from: from ?? 'en', to, cached: true }
+    }
+  }
+
+  // Fill in cached results and collect uncached items
+  const uncachedItems: { text: string; originalIndex: number; lookupIndex: number }[] = []
+
+  for (let lookupIndex = 0; lookupIndex < itemsToLookup.length; lookupIndex++) {
+    const item = itemsToLookup[lookupIndex]
+    const cached = cachedResults.get(lookupIndex)
+
+    if (cached) {
+      // Handle same-language case
+      if (cached.from === to || (from && from === to)) {
+        results[item.index] = { text: item.text, from: cached.from as SupportedLanguage, to, cached: true }
+      } else {
+        emitAnalytics(config, {
+          type: 'cache_hit',
+          text: item.text,
+          translatedText: cached.text,
+          from: cached.from as SupportedLanguage,
+          to,
+          cached: true,
+          duration: Date.now() - startTime,
+        })
+        results[item.index] = {
+          text: cached.text,
+          from: cached.from as SupportedLanguage,
+          to,
+          cached: true,
+          isManualOverride: cached.isManualOverride,
+        }
+      }
+    } else {
+      uncachedItems.push({ text: item.text, originalIndex: item.index, lookupIndex })
+    }
+  }
+
+  // Translate uncached items in parallel
+  if (uncachedItems.length > 0) {
+    const translations = await Promise.all(
+      uncachedItems.map(item =>
+        translateText(adapter, config, {
+          text: item.text,
+          to,
+          from,
+          context,
+        })
+      )
+    )
+
+    for (let i = 0; i < uncachedItems.length; i++) {
+      results[uncachedItems[i].originalIndex] = translations[i]
+    }
+  }
+
+  return results
 }
 
 export async function detectLanguage(
@@ -245,28 +317,71 @@ export async function translateObject<T extends object, K extends StringKeys<T>>
   }
 
   try {
-    // Use translateText for each field when resource info is provided (enables field-level caching)
-    // Otherwise use batch translation
-    const results = resourceType && resourceId
-      ? await Promise.all(
-          textsToTranslate.map(({ field, text }) =>
-            translateText(adapter, config, {
-              text,
-              to,
-              from,
-              context,
-              resourceType,
-              resourceId,
-              field: String(field),
-            })
-          )
+    // Batch cache lookup first
+    const cacheItems = textsToTranslate.map(({ field, text }) => ({
+      text,
+      resourceType,
+      resourceId,
+      field: String(field),
+    }))
+
+    const cachedResults = await getCachedBatch(adapter, cacheItems, to)
+    const results: TranslateResult[] = new Array(textsToTranslate.length)
+    const uncachedItems: { index: number; field: K; text: string }[] = []
+    const startTime = Date.now()
+
+    // Fill in cached results and collect uncached items
+    for (let i = 0; i < textsToTranslate.length; i++) {
+      const cached = cachedResults.get(i)
+      if (cached) {
+        if (cached.from === to || (from && from === to)) {
+          results[i] = { text: textsToTranslate[i].text, from: cached.from as SupportedLanguage, to, cached: true }
+        } else {
+          emitAnalytics(config, {
+            type: 'cache_hit',
+            text: textsToTranslate[i].text,
+            translatedText: cached.text,
+            from: cached.from as SupportedLanguage,
+            to,
+            cached: true,
+            duration: Date.now() - startTime,
+            resourceType,
+            resourceId,
+            field: String(textsToTranslate[i].field),
+          })
+          results[i] = {
+            text: cached.text,
+            from: cached.from as SupportedLanguage,
+            to,
+            cached: true,
+            isManualOverride: cached.isManualOverride,
+          }
+        }
+      } else {
+        uncachedItems.push({ index: i, ...textsToTranslate[i] })
+      }
+    }
+
+    // Translate uncached items
+    if (uncachedItems.length > 0) {
+      const translations = await Promise.all(
+        uncachedItems.map(({ field, text }) =>
+          translateText(adapter, config, {
+            text,
+            to,
+            from,
+            context,
+            resourceType,
+            resourceId,
+            field: String(field),
+          })
         )
-      : await translateBatch(adapter, config, {
-          texts: textsToTranslate.map(t => t.text),
-          to,
-          from,
-          context,
-        })
+      )
+
+      for (let i = 0; i < uncachedItems.length; i++) {
+        results[uncachedItems[i].index] = translations[i]
+      }
+    }
 
     // Build translated object
     const translated = { ...item }
@@ -314,28 +429,73 @@ export async function translateObjects<T extends object, K extends StringKeys<T>
   }
 
   try {
-    // Use translateText for each field when resource info is provided (enables field-level caching)
-    // Otherwise use batch translation
-    const results = resourceType && resourceIdField
-      ? await Promise.all(
-          textsToTranslate.map(({ field, text, resourceId }) =>
-            translateText(adapter, config, {
-              text,
-              to,
-              from,
-              context,
-              resourceType,
-              resourceId,
-              field: String(field),
-            })
-          )
+    // Batch cache lookup first
+    const cacheItems = textsToTranslate.map(({ text, field, resourceId }) => ({
+      text,
+      resourceType,
+      resourceId,
+      field: String(field),
+    }))
+
+    const cachedResults = await getCachedBatch(adapter, cacheItems, to)
+    const results: TranslateResult[] = new Array(textsToTranslate.length)
+    const uncachedItems: { index: number; itemIndex: number; field: K; text: string; resourceId?: string }[] = []
+    const startTime = Date.now()
+
+    // Fill in cached results and collect uncached items
+    for (let i = 0; i < textsToTranslate.length; i++) {
+      const cached = cachedResults.get(i)
+      const item = textsToTranslate[i]
+
+      if (cached) {
+        if (cached.from === to || (from && from === to)) {
+          results[i] = { text: item.text, from: cached.from as SupportedLanguage, to, cached: true }
+        } else {
+          emitAnalytics(config, {
+            type: 'cache_hit',
+            text: item.text,
+            translatedText: cached.text,
+            from: cached.from as SupportedLanguage,
+            to,
+            cached: true,
+            duration: Date.now() - startTime,
+            resourceType,
+            resourceId: item.resourceId,
+            field: String(item.field),
+          })
+          results[i] = {
+            text: cached.text,
+            from: cached.from as SupportedLanguage,
+            to,
+            cached: true,
+            isManualOverride: cached.isManualOverride,
+          }
+        }
+      } else {
+        uncachedItems.push({ index: i, ...item })
+      }
+    }
+
+    // Translate uncached items
+    if (uncachedItems.length > 0) {
+      const translations = await Promise.all(
+        uncachedItems.map(({ field, text, resourceId }) =>
+          translateText(adapter, config, {
+            text,
+            to,
+            from,
+            context,
+            resourceType,
+            resourceId,
+            field: String(field),
+          })
         )
-      : await translateBatch(adapter, config, {
-          texts: textsToTranslate.map(t => t.text),
-          to,
-          from,
-          context,
-        })
+      )
+
+      for (let i = 0; i < uncachedItems.length; i++) {
+        results[uncachedItems[i].index] = translations[i]
+      }
+    }
 
     // Build translated items
     const translated = items.map(item => ({ ...item }))

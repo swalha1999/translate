@@ -15,6 +15,20 @@ export function createPrismaAdapter(config: PrismaAdapterConfig): CacheAdapter {
       return row ?? null
     },
 
+    async getMany(ids: string[]): Promise<Map<string, CacheEntry>> {
+      if (ids.length === 0) {
+        return new Map()
+      }
+      const rows = await prisma.translationCache.findMany({
+        where: { id: { in: ids } },
+      })
+      const result = new Map<string, CacheEntry>()
+      for (const row of rows) {
+        result.set(row.id, row)
+      }
+      return result
+    },
+
     async set(entry): Promise<void> {
       const now = new Date()
       await prisma.translationCache.upsert({

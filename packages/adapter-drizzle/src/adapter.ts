@@ -1,4 +1,4 @@
-import { eq, and, sql } from 'drizzle-orm'
+import { eq, and, sql, inArray } from 'drizzle-orm'
 import type { CacheAdapter, CacheEntry } from '@swalha1999/translate'
 
 interface DrizzleTable {
@@ -34,6 +34,21 @@ export function createDrizzleAdapter(config: DrizzleAdapterConfig): CacheAdapter
         .where(eq(table.id, id))
         .limit(1)
       return row ?? null
+    },
+
+    async getMany(ids: string[]): Promise<Map<string, CacheEntry>> {
+      if (ids.length === 0) {
+        return new Map()
+      }
+      const rows = await db
+        .select()
+        .from(table)
+        .where(inArray(table.id, ids))
+      const result = new Map<string, CacheEntry>()
+      for (const row of rows) {
+        result.set(row.id, row)
+      }
+      return result
     },
 
     async set(entry): Promise<void> {
