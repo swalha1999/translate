@@ -12,6 +12,7 @@ AI-powered translation for user-generated content with intelligent caching. Supp
 - **Object translation** - Type-safe translation of object fields in one line
 - **Language detection** - Auto-detect source language
 - **Database adapters** - Memory, Drizzle, Prisma
+- **Analytics** - Custom analytics callback for tracking translations
 
 ## Installation
 
@@ -262,8 +263,10 @@ Creates a translate instance.
 interface TranslateConfig {
   adapter: CacheAdapter
   model: LanguageModel
-  languages: readonly string[]
+  languages?: readonly string[]
   temperature?: number // default: 0.3
+  verbose?: boolean // log LLM input/output
+  onAnalytics?: (event: AnalyticsEvent) => void | Promise<void>
 }
 ```
 
@@ -432,6 +435,98 @@ const stats = await translate.getCacheStats()
 //   byLanguage: { ar: 50, he: 100 },
 //   manualOverrides: 5
 // }
+```
+
+## Analytics
+
+Track translation events with a custom analytics callback. Useful for monitoring usage, debugging, and integrating with analytics services.
+
+### Setup
+
+```typescript
+import { createTranslate, createMemoryAdapter, openai } from '@swalha1999/translate'
+import type { AnalyticsEvent } from '@swalha1999/translate'
+
+const translate = createTranslate({
+  adapter: createMemoryAdapter(),
+  model: openai('gpt-4o-mini'),
+  onAnalytics: (event: AnalyticsEvent) => {
+    console.log(`[${event.type}] ${event.duration}ms`)
+
+    // Send to your analytics service
+    myAnalytics.track('translation', event)
+  }
+})
+```
+
+### Event Types
+
+The `onAnalytics` callback receives events for:
+
+| Type | Description |
+|------|-------------|
+| `translation` | Successful AI translation |
+| `cache_hit` | Translation served from cache |
+| `detection` | Language detection completed |
+| `error` | Translation or detection failed |
+
+### AnalyticsEvent Interface
+
+```typescript
+interface AnalyticsEvent {
+  type: 'translation' | 'detection' | 'cache_hit' | 'error'
+  text: string                    // Original text
+  translatedText?: string         // Translated result (if applicable)
+  from?: SupportedLanguage        // Source language
+  to?: SupportedLanguage          // Target language
+  cached: boolean                 // Whether result was from cache
+  duration: number                // Time in milliseconds
+  provider?: string               // AI provider (e.g., 'openai')
+  model?: string                  // Model used (e.g., 'gpt-4o-mini')
+  error?: string                  // Error message (for error events)
+  resourceType?: string           // Resource type if provided
+  resourceId?: string             // Resource ID if provided
+  field?: string                  // Field name if provided
+}
+```
+
+### Example: Logging with Context
+
+```typescript
+const translate = createTranslate({
+  adapter: createMemoryAdapter(),
+  model: openai('gpt-4o-mini'),
+  onAnalytics: (event) => {
+    if (event.type === 'error') {
+      console.error(`Translation failed: ${event.error}`, {
+        text: event.text,
+        to: event.to,
+        duration: event.duration,
+      })
+    } else if (event.type === 'translation') {
+      console.log(`Translated "${event.text}" to ${event.to} in ${event.duration}ms`)
+    } else if (event.type === 'cache_hit') {
+      console.log(`Cache hit for "${event.text}" (${event.duration}ms)`)
+    }
+  }
+})
+```
+
+### Async Callbacks
+
+The callback can be async. Errors in the callback won't block translations:
+
+```typescript
+const translate = createTranslate({
+  adapter: createMemoryAdapter(),
+  model: openai('gpt-4o-mini'),
+  onAnalytics: async (event) => {
+    await fetch('/api/analytics', {
+      method: 'POST',
+      body: JSON.stringify(event),
+    })
+  }
+})
 ```
 
 ## License
