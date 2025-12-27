@@ -22,7 +22,7 @@ export async function getCached(
     const resourceCached = await adapter.get(resourceKey)
 
     if (resourceCached) {
-      await adapter.touch(resourceKey)
+      adapter.touch(resourceKey).catch(() => {}) // fire-and-forget
       return {
         text: resourceCached.translatedText,
         from: resourceCached.sourceLanguage,
@@ -35,7 +35,7 @@ export async function getCached(
   const hashCached = await adapter.get(hashKey)
 
   if (hashCached) {
-    await adapter.touch(hashKey)
+    adapter.touch(hashKey).catch(() => {}) // fire-and-forget
     return {
       text: hashCached.translatedText,
       from: hashCached.sourceLanguage,

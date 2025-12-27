@@ -287,14 +287,14 @@ describe('Adapter Error Handling', () => {
         from: 'en',
       })
 
-      // Second call - touch fails but we still get the cached result
-      await expect(
-        translate.text({
-          text: 'Hello',
-          to: 'he',
-          from: 'en',
-        })
-      ).rejects.toThrow('Touch failed')
+      // Second call - touch fails silently (fire-and-forget), cached result still returned
+      const result = await translate.text({
+        text: 'Hello',
+        to: 'he',
+        from: 'en',
+      })
+      expect(result.text).toBe('שלום')
+      expect(result.cached).toBe(true)
     })
   })
 
