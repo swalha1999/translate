@@ -179,7 +179,7 @@ describe('Adapter Error Handling', () => {
   })
 
   describe('adapter.set() failures', () => {
-    it('should propagate error when set() throws', async () => {
+    it('should succeed even when set() throws (fire-and-forget)', async () => {
       const adapter = createFailingAdapter({
         set: new Error('Write failed'),
       })
@@ -194,17 +194,16 @@ describe('Adapter Error Handling', () => {
         languages: ['en', 'he', 'ar', 'ru'],
       })
 
-      // Current implementation propagates set errors
-      await expect(
-        translate.text({
-          text: 'Hello',
-          to: 'he',
-          from: 'en',
-        })
-      ).rejects.toThrow('Write failed')
+      // set() is fire-and-forget, so translation succeeds even if cache write fails
+      const result = await translate.text({
+        text: 'Hello',
+        to: 'he',
+        from: 'en',
+      })
+      expect(result.text).toBe('שלום')
     })
 
-    it('should propagate error in batch when set() fails', async () => {
+    it('should succeed in batch even when set() fails (fire-and-forget)', async () => {
       let setCallCount = 0
       const adapter: CacheAdapter = {
         async get() { return null },
@@ -232,13 +231,15 @@ describe('Adapter Error Handling', () => {
         languages: ['en', 'he', 'ar', 'ru'],
       })
 
-      await expect(
-        translate.batch({
-          texts: ['Hello', 'World'],
-          to: 'he',
-          from: 'en',
-        })
-      ).rejects.toThrow('First set failed')
+      // set() is fire-and-forget, batch succeeds even if cache writes fail
+      const results = await translate.batch({
+        texts: ['Hello', 'World'],
+        to: 'he',
+        from: 'en',
+      })
+      expect(results).toHaveLength(2)
+      expect(results[0].text).toBe('שלום')
+      expect(results[1].text).toBe('שלום')
     })
   })
 

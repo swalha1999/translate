@@ -111,7 +111,7 @@ async function executeTranslation(
     })
 
     if (result.from !== to) {
-      await setCache(adapter, {
+      setCache(adapter, {
         sourceText: text,
         sourceLanguage: result.from,
         targetLanguage: to,
@@ -121,7 +121,7 @@ async function executeTranslation(
         resourceType,
         resourceId,
         field,
-      })
+      }).catch(() => {}) // fire-and-forget
     }
 
     emitAnalytics(config, {
