@@ -1,6 +1,6 @@
 {
   "name": "@swalha1999/translate-adapter-prisma",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Prisma adapter for @swalha1999/translate",
   "author": "swalha1999",
   "repository": {
