@@ -73,6 +73,16 @@ function createFailingAdapter(failures: {
         entry.lastUsedAt = new Date()
       }
     },
+    async touchMany(ids: string[]) {
+      if (failures.touch) throw failures.touch
+      const now = new Date()
+      for (const id of ids) {
+        const entry = storage.get(id)
+        if (entry) {
+          entry.lastUsedAt = now
+        }
+      }
+    },
     async delete(id: string) {
       if (failures.delete) throw failures.delete
       storage.delete(id)

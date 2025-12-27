@@ -725,7 +725,7 @@ describe('Batch Operations', () => {
     })
 
     it('should handle empty array', async () => {
-      const results = await translateObjects(adapter, config, [], {
+      const results = await translateObjects(adapter, config, [] as { title: string }[], {
         fields: ['title'],
         to: 'he',
       })

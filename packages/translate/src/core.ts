@@ -55,8 +55,8 @@ function deduplicateByText<T extends { text: string }>(items: T[]): Map<string, 
 function processCachedResult(
   cached: { text: string; from: string; isManualOverride: boolean },
   originalText: string,
-  to: string,
-  from: string | undefined,
+  to: SupportedLanguage,
+  from: SupportedLanguage | undefined,
   config: TranslateConfig,
   startTime: number,
   resourceParams?: { resourceType?: string; resourceId?: string; field?: string }
@@ -89,7 +89,7 @@ function processCachedResult(
 async function translateUniqueTexts(
   config: TranslateConfig,
   uniqueTexts: string[],
-  params: { to: string; from?: string; context?: string },
+  params: { to: SupportedLanguage; from?: SupportedLanguage; context?: string },
   startTime: number,
   resourceType?: string
 ): Promise<{ text: string; result: TranslateResult; sourceLanguage: string }[]> {
