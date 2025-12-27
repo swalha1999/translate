@@ -1,5 +1,5 @@
 import type { CacheAdapter } from './adapters/types'
-import type { TranslateConfig, TranslateParams, TranslateResult, BatchParams, SupportedLanguage, StringKeys, ObjectTranslateParams } from './create-translate'
+import type { TranslateConfig, TranslateParams, TranslateResult, BatchParams, SupportedLanguage, StringKeys, ObjectTranslateParams, AnalyticsEvent } from './create-translate'
 import { getCached, setCache } from './cache'
 import { createHashKey, createResourceKey, hasResourceInfo } from './cache-key'
 import { translateWithAI, detectLanguageWithAI } from './providers/ai-sdk'
@@ -7,12 +7,32 @@ import { getModelInfo } from './providers/types'
 
 const inFlightRequests = new Map<string, Promise<TranslateResult>>()
 
+function emitAnalytics(config: TranslateConfig, event: AnalyticsEvent): void {
+  if (config.onAnalytics) {
+    try {
+      const result = config.onAnalytics(event)
+      if (result instanceof Promise) {
+        result.catch((err) => {
+          if (config.verbose) {
+            console.error('Analytics callback error:', err)
+          }
+        })
+      }
+    } catch (err) {
+      if (config.verbose) {
+        console.error('Analytics callback error:', err)
+      }
+    }
+  }
+}
+
 export async function translateText(
   adapter: CacheAdapter,
   config: TranslateConfig,
   params: TranslateParams
 ): Promise<TranslateResult> {
   const { text, to, from, context, resourceType, resourceId, field } = params
+  const startTime = Date.now()
 
   if (!text.trim()) {
     return { text, from: from ?? 'en', to, cached: true }
@@ -28,6 +48,20 @@ export async function translateText(
     if (cached.from === to || (from && from === to)) {
       return { text, from: cached.from as SupportedLanguage, to, cached: true }
     }
+
+    emitAnalytics(config, {
+      type: 'cache_hit',
+      text,
+      translatedText: cached.text,
+      from: cached.from as SupportedLanguage,
+      to,
+      cached: true,
+      duration: Date.now() - startTime,
+      resourceType,
+      resourceId,
+      field,
+    })
+
     return {
       text: cached.text,
       from: cached.from as TranslateResult['from'],
@@ -46,7 +80,7 @@ export async function translateText(
     return existingFlight
   }
 
-  const flightPromise = executeTranslation(adapter, config, params)
+  const flightPromise = executeTranslation(adapter, config, params, startTime)
   inFlightRequests.set(flightKey, flightPromise)
 
   try {
@@ -59,42 +93,73 @@ export async function translateText(
 async function executeTranslation(
   adapter: CacheAdapter,
   config: TranslateConfig,
-  params: TranslateParams
+  params: TranslateParams,
+  startTime: number
 ): Promise<TranslateResult> {
   const { text, to, from, context, resourceType, resourceId, field } = params
-
-  const result = await translateWithAI({
-    model: config.model,
-    text,
-    to,
-    from,
-    context,
-    temperature: config.temperature,
-    verbose: config.verbose,
-  })
-
-  // Get model info for cache metadata
   const modelInfo = getModelInfo(config.model)
 
-  if (result.from !== to) {
-    await setCache(adapter, {
-      sourceText: text,
-      sourceLanguage: result.from,
-      targetLanguage: to,
+  try {
+    const result = await translateWithAI({
+      model: config.model,
+      text,
+      to,
+      from,
+      context,
+      temperature: config.temperature,
+      verbose: config.verbose,
+    })
+
+    if (result.from !== to) {
+      await setCache(adapter, {
+        sourceText: text,
+        sourceLanguage: result.from,
+        targetLanguage: to,
+        translatedText: result.text,
+        provider: modelInfo.provider,
+        model: modelInfo.modelId,
+        resourceType,
+        resourceId,
+        field,
+      })
+    }
+
+    emitAnalytics(config, {
+      type: 'translation',
+      text,
       translatedText: result.text,
+      from: result.from as SupportedLanguage,
+      to,
+      cached: false,
+      duration: Date.now() - startTime,
       provider: modelInfo.provider,
       model: modelInfo.modelId,
       resourceType,
       resourceId,
       field,
     })
-  }
 
-  return {
-    text: result.text,
-    from: result.from as TranslateResult['from'],
-    to,
-    cached: false,
+    return {
+      text: result.text,
+      from: result.from as TranslateResult['from'],
+      to,
+      cached: false,
+    }
+  } catch (err) {
+    emitAnalytics(config, {
+      type: 'error',
+      text,
+      to,
+      cached: false,
+      duration: Date.now() - startTime,
+      provider: modelInfo.provider,
+      model: modelInfo.modelId,
+      error: err instanceof Error ? err.message : String(err),
+      resourceType,
+      resourceId,
+      field,
+    })
+    throw err
   }
 }
 
@@ -119,12 +184,40 @@ export async function detectLanguage(
   config: TranslateConfig,
   text: string
 ): Promise<{ language: string; confidence: number }> {
-  return detectLanguageWithAI({
-    model: config.model,
-    text,
-    temperature: 0,
-    verbose: config.verbose,
-  })
+  const startTime = Date.now()
+  const modelInfo = getModelInfo(config.model)
+
+  try {
+    const result = await detectLanguageWithAI({
+      model: config.model,
+      text,
+      temperature: 0,
+      verbose: config.verbose,
+    })
+
+    emitAnalytics(config, {
+      type: 'detection',
+      text,
+      from: result.language as SupportedLanguage,
+      cached: false,
+      duration: Date.now() - startTime,
+      provider: modelInfo.provider,
+      model: modelInfo.modelId,
+    })
+
+    return result
+  } catch (err) {
+    emitAnalytics(config, {
+      type: 'error',
+      text,
+      cached: false,
+      duration: Date.now() - startTime,
+      provider: modelInfo.provider,
+      model: modelInfo.modelId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+    throw err
+  }
 }
 
 export async function translateObject<T extends object, K extends StringKeys<T>>(

@@ -5,6 +5,26 @@ import { setManualTranslation, clearManualTranslation } from './cache'
 
 export type SupportedLanguage = 'en' | 'ar' | 'he' | 'ru' | 'ja' | 'ko' | 'zh' | 'hi' | 'el' | 'th' | 'fr' | 'de'
 
+export type AnalyticsEventType = 'translation' | 'detection' | 'cache_hit' | 'error'
+
+export interface AnalyticsEvent {
+  type: AnalyticsEventType
+  text: string
+  translatedText?: string
+  from?: SupportedLanguage
+  to?: SupportedLanguage
+  cached: boolean
+  duration: number
+  provider?: string
+  model?: string
+  error?: string
+  resourceType?: string
+  resourceId?: string
+  field?: string
+}
+
+export type AnalyticsFunction = (event: AnalyticsEvent) => void | Promise<void>
+
 export interface TranslateConfig {
   adapter: CacheAdapter
   model: LanguageModel
@@ -12,6 +32,7 @@ export interface TranslateConfig {
   temperature?: number
   defaultLanguage?: SupportedLanguage
   verbose?: boolean
+  onAnalytics?: AnalyticsFunction
 }
 
 export interface TranslateParams {
