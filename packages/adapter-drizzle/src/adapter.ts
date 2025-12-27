@@ -73,11 +73,43 @@ export function createDrizzleAdapter(config: DrizzleAdapterConfig): CacheAdapter
         })
     },
 
+    async setMany(entries): Promise<void> {
+      if (entries.length === 0) return
+      const now = new Date()
+      const values = entries.map(entry => ({
+        ...entry,
+        createdAt: now,
+        updatedAt: now,
+        lastUsedAt: now,
+      }))
+      await db
+        .insert(table)
+        .values(values)
+        .onConflictDoUpdate({
+          target: table.id,
+          set: {
+            translatedText: sql`excluded.translated_text`,
+            sourceLanguage: sql`excluded.source_language`,
+            isManualOverride: sql`excluded.is_manual_override`,
+            updatedAt: now,
+            lastUsedAt: now,
+          },
+        })
+    },
+
     async touch(id: string): Promise<void> {
       await db
         .update(table)
         .set({ lastUsedAt: new Date() })
         .where(eq(table.id, id))
+    },
+
+    async touchMany(ids: string[]): Promise<void> {
+      if (ids.length === 0) return
+      await db
+        .update(table)
+        .set({ lastUsedAt: new Date() })
+        .where(inArray(table.id, ids))
     },
 
     async delete(id: string): Promise<void> {

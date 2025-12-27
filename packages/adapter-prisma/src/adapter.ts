@@ -49,9 +49,42 @@ export function createPrismaAdapter(config: PrismaAdapterConfig): CacheAdapter {
       })
     },
 
+    async setMany(entries): Promise<void> {
+      if (entries.length === 0) return
+      const now = new Date()
+      await prisma.$transaction(
+        entries.map(entry =>
+          prisma.translationCache.upsert({
+            where: { id: entry.id },
+            create: {
+              ...entry,
+              createdAt: now,
+              updatedAt: now,
+              lastUsedAt: now,
+            },
+            update: {
+              translatedText: entry.translatedText,
+              sourceLanguage: entry.sourceLanguage,
+              isManualOverride: entry.isManualOverride,
+              updatedAt: now,
+              lastUsedAt: now,
+            },
+          })
+        )
+      )
+    },
+
     async touch(id: string): Promise<void> {
       await prisma.translationCache.update({
         where: { id },
+        data: { lastUsedAt: new Date() },
+      })
+    },
+
+    async touchMany(ids: string[]): Promise<void> {
+      if (ids.length === 0) return
+      await prisma.translationCache.updateMany({
+        where: { id: { in: ids } },
         data: { lastUsedAt: new Date() },
       })
     },

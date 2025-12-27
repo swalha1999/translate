@@ -19,7 +19,9 @@ export interface CacheAdapter {
   get(id: string): Promise<CacheEntry | null>
   getMany(ids: string[]): Promise<Map<string, CacheEntry>>
   set(entry: Omit<CacheEntry, 'createdAt' | 'updatedAt' | 'lastUsedAt'>): Promise<void>
+  setMany(entries: Omit<CacheEntry, 'createdAt' | 'updatedAt' | 'lastUsedAt'>[]): Promise<void>
   touch(id: string): Promise<void>
+  touchMany(ids: string[]): Promise<void>
   delete(id: string): Promise<void>
   deleteByResource(resourceType: string, resourceId: string): Promise<number>
   deleteByLanguage(targetLanguage: string): Promise<number>

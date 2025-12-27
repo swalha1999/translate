@@ -1,10 +1,21 @@
 import { generateText, type LanguageModel } from 'ai'
 
+// All supported language codes - must match SupportedLanguage type
+export const SUPPORTED_LANGUAGES = ['en', 'ar', 'he', 'ru', 'ja', 'ko', 'zh', 'hi', 'el', 'th', 'fr', 'de'] as const
+
 const LANGUAGE_NAMES: Record<string, string> = {
   en: 'English',
   ar: 'Arabic',
   he: 'Hebrew',
   ru: 'Russian',
+  ja: 'Japanese',
+  ko: 'Korean',
+  zh: 'Chinese',
+  hi: 'Hindi',
+  el: 'Greek',
+  th: 'Thai',
+  fr: 'French',
+  de: 'German',
 }
 
 const TRANSLATE_PROMPT = `Translate from {from} to {to}.
@@ -118,14 +129,12 @@ export async function detectLanguageWithAI(params: {
 
   const { text: detected } = await generateText({
     model,
-    prompt: `What language is this? Reply with only: en, ar, he, or ru.\n\nText: ${text}`,
+    prompt: `What language is this? Reply with only one of: ${SUPPORTED_LANGUAGES.join(', ')}.\n\nText: ${text}`,
     temperature,
   })
 
   const cleanDetected = detected.trim().toLowerCase()
-  const valid = ['en', 'ar', 'he', 'ru']
-
-  const language = valid.includes(cleanDetected) ? cleanDetected : 'en'
+  const language = (SUPPORTED_LANGUAGES as readonly string[]).includes(cleanDetected) ? cleanDetected : 'en'
 
   if (verbose) {
     console.log('[DetectLanguage] Output:', language)

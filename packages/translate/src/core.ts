@@ -1,11 +1,138 @@
 import type { CacheAdapter } from './adapters/types'
 import type { TranslateConfig, TranslateParams, TranslateResult, BatchParams, SupportedLanguage, StringKeys, ObjectTranslateParams, AnalyticsEvent } from './create-translate'
-import { getCached, getCachedBatch, setCache } from './cache'
+import { getCached, getCachedBatch, setCache, setCacheBatch } from './cache'
 import { createHashKey, createResourceKey, hasResourceInfo } from './cache-key'
 import { translateWithAI, detectLanguageWithAI } from './providers/ai-sdk'
 import { getModelInfo } from './providers/types'
 
 const inFlightRequests = new Map<string, Promise<TranslateResult>>()
+
+// Helper: Extract error message from any error type
+function extractErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
+// Helper: Handle cache operation errors with optional callback
+function handleCacheError(
+  config: TranslateConfig,
+  operation: 'get' | 'set' | 'touch',
+  err: unknown
+): void {
+  const error = err instanceof Error ? err : new Error(String(err))
+  if (config.onCacheError) {
+    try {
+      config.onCacheError(error, operation)
+    } catch {
+      // Ignore errors from the error handler itself
+    }
+  }
+  if (config.verbose) {
+    console.error(`[Cache] ${operation} failed:`, error.message)
+  }
+}
+
+// Helper: Fire-and-forget with error handling
+function fireAndForget<T>(
+  promise: Promise<T>,
+  config: TranslateConfig,
+  operation: 'get' | 'set' | 'touch'
+): void {
+  promise.catch(err => handleCacheError(config, operation, err))
+}
+
+// Helper: Group items by text to avoid duplicate translations
+function deduplicateByText<T extends { text: string }>(items: T[]): Map<string, number[]> {
+  const textToIndices = new Map<string, number[]>()
+  for (let i = 0; i < items.length; i++) {
+    const indices = textToIndices.get(items[i].text) || []
+    indices.push(i)
+    textToIndices.set(items[i].text, indices)
+  }
+  return textToIndices
+}
+
+// Helper: Process a cached result and emit analytics
+function processCachedResult(
+  cached: { text: string; from: string; isManualOverride: boolean },
+  originalText: string,
+  to: string,
+  from: string | undefined,
+  config: TranslateConfig,
+  startTime: number,
+  resourceParams?: { resourceType?: string; resourceId?: string; field?: string }
+): TranslateResult {
+  if (cached.from === to || (from && from === to)) {
+    return { text: originalText, from: cached.from as SupportedLanguage, to, cached: true }
+  }
+
+  emitAnalytics(config, {
+    type: 'cache_hit',
+    text: originalText,
+    translatedText: cached.text,
+    from: cached.from as SupportedLanguage,
+    to,
+    cached: true,
+    duration: Date.now() - startTime,
+    ...resourceParams,
+  })
+
+  return {
+    text: cached.text,
+    from: cached.from as SupportedLanguage,
+    to,
+    cached: true,
+    isManualOverride: cached.isManualOverride,
+  }
+}
+
+// Helper: Translate unique texts with deduplication
+async function translateUniqueTexts(
+  config: TranslateConfig,
+  uniqueTexts: string[],
+  params: { to: string; from?: string; context?: string },
+  startTime: number,
+  resourceType?: string
+): Promise<{ text: string; result: TranslateResult; sourceLanguage: string }[]> {
+  const modelInfo = getModelInfo(config.model)
+
+  return Promise.all(
+    uniqueTexts.map(async text => {
+      const aiResult = await translateWithAI({
+        model: config.model,
+        text,
+        to: params.to,
+        from: params.from,
+        context: params.context,
+        temperature: config.temperature,
+        verbose: config.verbose,
+      })
+
+      emitAnalytics(config, {
+        type: 'translation',
+        text,
+        translatedText: aiResult.text,
+        from: aiResult.from as SupportedLanguage,
+        to: params.to,
+        cached: false,
+        duration: Date.now() - startTime,
+        provider: modelInfo.provider,
+        model: modelInfo.modelId,
+        resourceType,
+      })
+
+      return {
+        text,
+        result: {
+          text: aiResult.text,
+          from: aiResult.from as SupportedLanguage,
+          to: params.to,
+          cached: false,
+        } as TranslateResult,
+        sourceLanguage: aiResult.from,
+      }
+    })
+  )
+}
 
 function emitAnalytics(config: TranslateConfig, event: AnalyticsEvent): void {
   if (config.onAnalytics) {
@@ -111,17 +238,21 @@ async function executeTranslation(
     })
 
     if (result.from !== to) {
-      setCache(adapter, {
-        sourceText: text,
-        sourceLanguage: result.from,
-        targetLanguage: to,
-        translatedText: result.text,
-        provider: modelInfo.provider,
-        model: modelInfo.modelId,
-        resourceType,
-        resourceId,
-        field,
-      }).catch(() => {}) // fire-and-forget
+      fireAndForget(
+        setCache(adapter, {
+          sourceText: text,
+          sourceLanguage: result.from,
+          targetLanguage: to,
+          translatedText: result.text,
+          provider: modelInfo.provider,
+          model: modelInfo.modelId,
+          resourceType,
+          resourceId,
+          field,
+        }),
+        config,
+        'set'
+      )
     }
 
     emitAnalytics(config, {
@@ -154,7 +285,7 @@ async function executeTranslation(
       duration: Date.now() - startTime,
       provider: modelInfo.provider,
       model: modelInfo.modelId,
-      error: err instanceof Error ? err.message : String(err),
+      error: extractErrorMessage(err),
       resourceType,
       resourceId,
       field,
@@ -198,54 +329,45 @@ export async function translateBatch(
   }
 
   // Fill in cached results and collect uncached items
-  const uncachedItems: { text: string; originalIndex: number; lookupIndex: number }[] = []
+  const uncachedItems: { text: string; originalIndex: number }[] = []
 
   for (let lookupIndex = 0; lookupIndex < itemsToLookup.length; lookupIndex++) {
     const item = itemsToLookup[lookupIndex]
     const cached = cachedResults.get(lookupIndex)
 
     if (cached) {
-      // Handle same-language case
-      if (cached.from === to || (from && from === to)) {
-        results[item.index] = { text: item.text, from: cached.from as SupportedLanguage, to, cached: true }
-      } else {
-        emitAnalytics(config, {
-          type: 'cache_hit',
-          text: item.text,
-          translatedText: cached.text,
-          from: cached.from as SupportedLanguage,
-          to,
-          cached: true,
-          duration: Date.now() - startTime,
-        })
-        results[item.index] = {
-          text: cached.text,
-          from: cached.from as SupportedLanguage,
-          to,
-          cached: true,
-          isManualOverride: cached.isManualOverride,
-        }
-      }
+      results[item.index] = processCachedResult(cached, item.text, to, from, config, startTime)
     } else {
-      uncachedItems.push({ text: item.text, originalIndex: item.index, lookupIndex })
+      uncachedItems.push({ text: item.text, originalIndex: item.index })
     }
   }
 
   // Translate uncached items in parallel
   if (uncachedItems.length > 0) {
-    const translations = await Promise.all(
-      uncachedItems.map(item =>
-        translateText(adapter, config, {
-          text: item.text,
-          to,
-          from,
-          context,
-        })
-      )
-    )
+    const modelInfo = getModelInfo(config.model)
+    const uniqueTexts = Array.from(deduplicateByText(uncachedItems).keys())
+    const translationResults = await translateUniqueTexts(config, uniqueTexts, { to, from, context }, startTime)
 
-    for (let i = 0; i < uncachedItems.length; i++) {
-      results[uncachedItems[i].originalIndex] = translations[i]
+    // Map results back to all items (including duplicates)
+    const textToResult = new Map(translationResults.map(r => [r.text, r]))
+    for (const item of uncachedItems) {
+      results[item.originalIndex] = textToResult.get(item.text)!.result
+    }
+
+    // Batch cache write (fire-and-forget)
+    const cacheEntries = translationResults
+      .filter(r => r.sourceLanguage !== to)
+      .map(r => ({
+        sourceText: r.text,
+        sourceLanguage: r.sourceLanguage,
+        targetLanguage: to,
+        translatedText: r.result.text,
+        provider: modelInfo.provider,
+        model: modelInfo.modelId,
+      }))
+
+    if (cacheEntries.length > 0) {
+      fireAndForget(setCacheBatch(adapter, cacheEntries), config, 'set')
     }
   }
 
@@ -286,7 +408,7 @@ export async function detectLanguage(
       duration: Date.now() - startTime,
       provider: modelInfo.provider,
       model: modelInfo.modelId,
-      error: err instanceof Error ? err.message : String(err),
+      error: extractErrorMessage(err),
     })
     throw err
   }
@@ -334,29 +456,9 @@ export async function translateObject<T extends object, K extends StringKeys<T>>
     for (let i = 0; i < textsToTranslate.length; i++) {
       const cached = cachedResults.get(i)
       if (cached) {
-        if (cached.from === to || (from && from === to)) {
-          results[i] = { text: textsToTranslate[i].text, from: cached.from as SupportedLanguage, to, cached: true }
-        } else {
-          emitAnalytics(config, {
-            type: 'cache_hit',
-            text: textsToTranslate[i].text,
-            translatedText: cached.text,
-            from: cached.from as SupportedLanguage,
-            to,
-            cached: true,
-            duration: Date.now() - startTime,
-            resourceType,
-            resourceId,
-            field: String(textsToTranslate[i].field),
-          })
-          results[i] = {
-            text: cached.text,
-            from: cached.from as SupportedLanguage,
-            to,
-            cached: true,
-            isManualOverride: cached.isManualOverride,
-          }
-        }
+        results[i] = processCachedResult(cached, textsToTranslate[i].text, to, from, config, startTime, {
+          resourceType, resourceId, field: String(textsToTranslate[i].field),
+        })
       } else {
         uncachedItems.push({ index: i, ...textsToTranslate[i] })
       }
@@ -364,22 +466,36 @@ export async function translateObject<T extends object, K extends StringKeys<T>>
 
     // Translate uncached items
     if (uncachedItems.length > 0) {
-      const translations = await Promise.all(
-        uncachedItems.map(({ field, text }) =>
-          translateText(adapter, config, {
-            text,
-            to,
-            from,
-            context,
-            resourceType,
-            resourceId,
-            field: String(field),
-          })
-        )
-      )
+      const modelInfo = getModelInfo(config.model)
+      const uniqueTexts = Array.from(deduplicateByText(uncachedItems).keys())
+      const translationResults = await translateUniqueTexts(config, uniqueTexts, { to, from, context }, startTime, resourceType)
 
-      for (let i = 0; i < uncachedItems.length; i++) {
-        results[uncachedItems[i].index] = translations[i]
+      // Map results back to all items (including duplicates)
+      const textToResult = new Map(translationResults.map(r => [r.text, r]))
+      for (const item of uncachedItems) {
+        results[item.index] = textToResult.get(item.text)!.result
+      }
+
+      // Cache each item with its specific resource info (fire-and-forget)
+      for (const item of uncachedItems) {
+        const tr = textToResult.get(item.text)!
+        if (tr.sourceLanguage !== to) {
+          fireAndForget(
+            setCache(adapter, {
+              sourceText: item.text,
+              sourceLanguage: tr.sourceLanguage,
+              targetLanguage: to,
+              translatedText: tr.result.text,
+              provider: modelInfo.provider,
+              model: modelInfo.modelId,
+              resourceType,
+              resourceId,
+              field: String(item.field),
+            }),
+            config,
+            'set'
+          )
+        }
       }
     }
 
@@ -448,29 +564,9 @@ export async function translateObjects<T extends object, K extends StringKeys<T>
       const item = textsToTranslate[i]
 
       if (cached) {
-        if (cached.from === to || (from && from === to)) {
-          results[i] = { text: item.text, from: cached.from as SupportedLanguage, to, cached: true }
-        } else {
-          emitAnalytics(config, {
-            type: 'cache_hit',
-            text: item.text,
-            translatedText: cached.text,
-            from: cached.from as SupportedLanguage,
-            to,
-            cached: true,
-            duration: Date.now() - startTime,
-            resourceType,
-            resourceId: item.resourceId,
-            field: String(item.field),
-          })
-          results[i] = {
-            text: cached.text,
-            from: cached.from as SupportedLanguage,
-            to,
-            cached: true,
-            isManualOverride: cached.isManualOverride,
-          }
-        }
+        results[i] = processCachedResult(cached, item.text, to, from, config, startTime, {
+          resourceType, resourceId: item.resourceId, field: String(item.field),
+        })
       } else {
         uncachedItems.push({ index: i, ...item })
       }
@@ -478,22 +574,36 @@ export async function translateObjects<T extends object, K extends StringKeys<T>
 
     // Translate uncached items
     if (uncachedItems.length > 0) {
-      const translations = await Promise.all(
-        uncachedItems.map(({ field, text, resourceId }) =>
-          translateText(adapter, config, {
-            text,
-            to,
-            from,
-            context,
-            resourceType,
-            resourceId,
-            field: String(field),
-          })
-        )
-      )
+      const modelInfo = getModelInfo(config.model)
+      const uniqueTexts = Array.from(deduplicateByText(uncachedItems).keys())
+      const translationResults = await translateUniqueTexts(config, uniqueTexts, { to, from, context }, startTime, resourceType)
 
-      for (let i = 0; i < uncachedItems.length; i++) {
-        results[uncachedItems[i].index] = translations[i]
+      // Map results back to all items (including duplicates)
+      const textToResult = new Map(translationResults.map(r => [r.text, r]))
+      for (const item of uncachedItems) {
+        results[item.index] = textToResult.get(item.text)!.result
+      }
+
+      // Cache each item with its specific resource info (fire-and-forget)
+      for (const item of uncachedItems) {
+        const tr = textToResult.get(item.text)!
+        if (tr.sourceLanguage !== to) {
+          fireAndForget(
+            setCache(adapter, {
+              sourceText: item.text,
+              sourceLanguage: tr.sourceLanguage,
+              targetLanguage: to,
+              translatedText: tr.result.text,
+              provider: modelInfo.provider,
+              model: modelInfo.modelId,
+              resourceType,
+              resourceId: item.resourceId,
+              field: String(item.field),
+            }),
+            config,
+            'set'
+          )
+        }
       }
     }
 

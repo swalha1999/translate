@@ -29,10 +29,32 @@ export function createMemoryAdapter(): CacheAdapter {
       })
     },
 
+    async setMany(entries) {
+      const now = new Date()
+      for (const entry of entries) {
+        cache.set(entry.id, {
+          ...entry,
+          createdAt: now,
+          updatedAt: now,
+          lastUsedAt: now,
+        })
+      }
+    },
+
     async touch(id: string) {
       const entry = cache.get(id)
       if (entry) {
         entry.lastUsedAt = new Date()
+      }
+    },
+
+    async touchMany(ids: string[]) {
+      const now = new Date()
+      for (const id of ids) {
+        const entry = cache.get(id)
+        if (entry) {
+          entry.lastUsedAt = now
+        }
       }
     },
 

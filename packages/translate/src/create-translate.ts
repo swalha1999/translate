@@ -25,6 +25,8 @@ export interface AnalyticsEvent {
 
 export type AnalyticsFunction = (event: AnalyticsEvent) => void | Promise<void>
 
+export type CacheErrorFunction = (error: Error, operation: 'get' | 'set' | 'touch') => void
+
 export interface TranslateConfig {
   adapter: CacheAdapter
   model: LanguageModel
@@ -33,6 +35,7 @@ export interface TranslateConfig {
   defaultLanguage?: SupportedLanguage
   verbose?: boolean
   onAnalytics?: AnalyticsFunction
+  onCacheError?: CacheErrorFunction
 }
 
 export interface TranslateParams {

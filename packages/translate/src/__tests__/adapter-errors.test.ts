@@ -54,6 +54,18 @@ function createFailingAdapter(failures: {
         lastUsedAt: now,
       })
     },
+    async setMany(entries) {
+      if (failures.set) throw failures.set
+      const now = new Date()
+      for (const entry of entries) {
+        storage.set(entry.id, {
+          ...entry,
+          createdAt: now,
+          updatedAt: now,
+          lastUsedAt: now,
+        })
+      }
+    },
     async touch(id: string) {
       if (failures.touch) throw failures.touch
       const entry = storage.get(id)
@@ -111,6 +123,173 @@ function createFailingAdapter(failures: {
 describe('Adapter Error Handling', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+  describe('batch operation failures', () => {
+    it('should propagate error when getMany() throws', async () => {
+      const adapter: CacheAdapter = {
+        async get() { return null },
+        async getMany() { throw new Error('Batch get failed') },
+        async set() {},
+        async setMany() {},
+        async touch() {},
+        async touchMany() {},
+        async delete() {},
+        async deleteByResource() { return 0 },
+        async deleteByLanguage() { return 0 },
+        async deleteAll() { return 0 },
+        async getStats() { return { totalEntries: 0, byLanguage: {}, manualOverrides: 0 } },
+      }
+
+      vi.mocked(generateText).mockResolvedValue({ text: 'שלום' } as any)
+
+      const translate = createTranslate({
+        model: mockModel,
+        adapter,
+        languages: ['en', 'he', 'ar', 'ru'],
+      })
+
+      await expect(
+        translate.batch({ texts: ['Hello', 'World'], to: 'he', from: 'en' })
+      ).rejects.toThrow('Batch get failed')
+    })
+
+    it('should succeed when setMany() fails (fire-and-forget)', async () => {
+      const adapter: CacheAdapter = {
+        async get() { return null },
+        async getMany() { return new Map() },
+        async set() {},
+        async setMany() { throw new Error('Batch set failed') },
+        async touch() {},
+        async touchMany() {},
+        async delete() {},
+        async deleteByResource() { return 0 },
+        async deleteByLanguage() { return 0 },
+        async deleteAll() { return 0 },
+        async getStats() { return { totalEntries: 0, byLanguage: {}, manualOverrides: 0 } },
+      }
+
+      vi.mocked(generateText).mockResolvedValue({ text: 'שלום' } as any)
+
+      const translate = createTranslate({
+        model: mockModel,
+        adapter,
+        languages: ['en', 'he', 'ar', 'ru'],
+      })
+
+      // Should succeed despite setMany failure
+      const results = await translate.batch({
+        texts: ['Hello', 'World'],
+        to: 'he',
+        from: 'en',
+      })
+
+      expect(results).toHaveLength(2)
+    })
+
+    it('should handle getMany returning partial results', async () => {
+      const storage = new Map<string, CacheEntry>()
+
+      // Pre-populate with one cached entry
+      const { createHashKey } = await import('../cache-key')
+      const cachedKey = createHashKey('Cached', 'he')
+      storage.set(cachedKey, {
+        id: cachedKey,
+        sourceText: 'Cached',
+        sourceLanguage: 'en',
+        targetLanguage: 'he',
+        translatedText: 'מטמון',
+        isManualOverride: false,
+        provider: 'openai',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        lastUsedAt: new Date(),
+      })
+
+      const adapter: CacheAdapter = {
+        async get(id) { return storage.get(id) ?? null },
+        async getMany(ids) {
+          const result = new Map<string, CacheEntry>()
+          for (const id of ids) {
+            const entry = storage.get(id)
+            if (entry) result.set(id, entry)
+          }
+          return result
+        },
+        async set(entry) {
+          storage.set(entry.id, { ...entry, createdAt: new Date(), updatedAt: new Date(), lastUsedAt: new Date() })
+        },
+        async setMany(entries) {
+          for (const entry of entries) {
+            storage.set(entry.id, { ...entry, createdAt: new Date(), updatedAt: new Date(), lastUsedAt: new Date() })
+          }
+        },
+        async touch() {},
+        async touchMany() {},
+        async delete() {},
+        async deleteByResource() { return 0 },
+        async deleteByLanguage() { return 0 },
+        async deleteAll() { return 0 },
+        async getStats() { return { totalEntries: storage.size, byLanguage: {}, manualOverrides: 0 } },
+      }
+
+      vi.mocked(generateText).mockResolvedValue({ text: 'לא במטמון' } as any)
+
+      const translate = createTranslate({
+        model: mockModel,
+        adapter,
+        languages: ['en', 'he', 'ar', 'ru'],
+      })
+
+      const results = await translate.batch({
+        texts: ['Cached', 'NotCached'],
+        to: 'he',
+        from: 'en',
+      })
+
+      expect(results).toHaveLength(2)
+      expect(results[0].text).toBe('מטמון')
+      expect(results[0].cached).toBe(true)
+      expect(results[1].text).toBe('לא במטמון')
+      expect(results[1].cached).toBe(false)
+    })
+
+    it('should handle getMany throwing after first successful call', async () => {
+      let callCount = 0
+      const adapter: CacheAdapter = {
+        async get() { return null },
+        async getMany() {
+          callCount++
+          if (callCount === 1) return new Map()
+          throw new Error('Second getMany failed')
+        },
+        async set() {},
+        async setMany() {},
+        async touch() {},
+        async touchMany() {},
+        async delete() {},
+        async deleteByResource() { return 0 },
+        async deleteByLanguage() { return 0 },
+        async deleteAll() { return 0 },
+        async getStats() { return { totalEntries: 0, byLanguage: {}, manualOverrides: 0 } },
+      }
+
+      vi.mocked(generateText).mockResolvedValue({ text: 'תרגום' } as any)
+
+      const translate = createTranslate({
+        model: mockModel,
+        adapter,
+        languages: ['en', 'he', 'ar', 'ru'],
+      })
+
+      // First call succeeds
+      await translate.batch({ texts: ['Hello'], to: 'he', from: 'en' })
+
+      // Second call fails
+      await expect(
+        translate.batch({ texts: ['World'], to: 'he', from: 'en' })
+      ).rejects.toThrow('Second getMany failed')
+    })
   })
 
   describe('adapter.get() failures', () => {
@@ -223,7 +402,9 @@ describe('Adapter Error Handling', () => {
           setCallCount++
           if (setCallCount === 1) throw new Error('First set failed')
         },
+        async setMany() {},
         async touch() {},
+        async touchMany() {},
         async delete() {},
         async deleteByResource() { return 0 },
         async deleteByLanguage() { return 0 },
@@ -279,8 +460,22 @@ describe('Adapter Error Handling', () => {
             lastUsedAt: now,
           })
         },
+        async setMany(entries) {
+          const now = new Date()
+          for (const entry of entries) {
+            storage.set(entry.id, {
+              ...entry,
+              createdAt: now,
+              updatedAt: now,
+              lastUsedAt: now,
+            })
+          }
+        },
         async touch() {
           throw new Error('Touch failed')
+        },
+        async touchMany() {
+          throw new Error('TouchMany failed')
         },
         async delete() {},
         async deleteByResource() { return 0 },
@@ -381,7 +576,9 @@ describe('Adapter Error Handling', () => {
           throw new Error('Async get failure')
         },
         async set() {},
+        async setMany() {},
         async touch() {},
+        async touchMany() {},
         async delete() {},
         async deleteByResource() { return 0 },
         async deleteByLanguage() { return 0 },

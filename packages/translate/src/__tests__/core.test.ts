@@ -512,6 +512,127 @@ describe('core', () => {
       expect(results[1].cached).toBe(false)
       expect(translateWithAI).toHaveBeenCalledTimes(1)
     })
+
+    describe('batch deduplication', () => {
+      it('should deduplicate identical texts within batch', async () => {
+        const results = await translateBatch(adapter, config, {
+          texts: ['Hello', 'World', 'Hello', 'Hello', 'World'],
+          to: 'he',
+        })
+
+        expect(results).toHaveLength(5)
+        // Only 2 unique texts, so only 2 API calls
+        expect(translateWithAI).toHaveBeenCalledTimes(2)
+
+        // All "Hello" results should be the same
+        expect(results[0].text).toBe(results[2].text)
+        expect(results[0].text).toBe(results[3].text)
+
+        // All "World" results should be the same
+        expect(results[1].text).toBe(results[4].text)
+      })
+
+      it('should maintain correct order with duplicates', async () => {
+        vi.mocked(translateWithAI).mockImplementation(async ({ text }) => ({
+          text: `translated:${text}`,
+          from: 'en',
+        }))
+
+        const results = await translateBatch(adapter, config, {
+          texts: ['A', 'B', 'A', 'C', 'B', 'A'],
+          to: 'he',
+        })
+
+        expect(results).toHaveLength(6)
+        expect(results[0].text).toBe('translated:A')
+        expect(results[1].text).toBe('translated:B')
+        expect(results[2].text).toBe('translated:A')
+        expect(results[3].text).toBe('translated:C')
+        expect(results[4].text).toBe('translated:B')
+        expect(results[5].text).toBe('translated:A')
+
+        // Only 3 unique texts
+        expect(translateWithAI).toHaveBeenCalledTimes(3)
+      })
+
+      it('should deduplicate only uncached texts', async () => {
+        // Pre-cache "Hello"
+        await translateText(adapter, config, { text: 'Hello', to: 'he' })
+        vi.mocked(translateWithAI).mockClear()
+
+        const results = await translateBatch(adapter, config, {
+          texts: ['Hello', 'World', 'Hello', 'World', 'New'],
+          to: 'he',
+        })
+
+        expect(results).toHaveLength(5)
+        // "Hello" is cached, only "World" and "New" need translation (2 unique)
+        expect(translateWithAI).toHaveBeenCalledTimes(2)
+
+        // Both "Hello" should be cached
+        expect(results[0].cached).toBe(true)
+        expect(results[2].cached).toBe(true)
+      })
+
+      it('should handle all duplicates being already cached', async () => {
+        // Pre-cache both texts
+        await translateText(adapter, config, { text: 'Hello', to: 'he' })
+        await translateText(adapter, config, { text: 'World', to: 'he' })
+        vi.mocked(translateWithAI).mockClear()
+
+        const results = await translateBatch(adapter, config, {
+          texts: ['Hello', 'World', 'Hello', 'World'],
+          to: 'he',
+        })
+
+        expect(results).toHaveLength(4)
+        expect(translateWithAI).not.toHaveBeenCalled()
+
+        results.forEach(result => {
+          expect(result.cached).toBe(true)
+        })
+      })
+
+      it('should cache results from deduplicated batch', async () => {
+        await translateBatch(adapter, config, {
+          texts: ['Hello', 'Hello', 'Hello'],
+          to: 'he',
+        })
+        vi.mocked(translateWithAI).mockClear()
+
+        // Second batch should use cache
+        const results = await translateBatch(adapter, config, {
+          texts: ['Hello'],
+          to: 'he',
+        })
+
+        expect(results[0].cached).toBe(true)
+        expect(translateWithAI).not.toHaveBeenCalled()
+      })
+
+      it('should handle single item batch (no deduplication needed)', async () => {
+        const results = await translateBatch(adapter, config, {
+          texts: ['Single'],
+          to: 'he',
+        })
+
+        expect(results).toHaveLength(1)
+        expect(translateWithAI).toHaveBeenCalledTimes(1)
+      })
+
+      it('should handle large batch with many duplicates efficiently', async () => {
+        const texts = Array(100).fill('Repeated').concat(Array(50).fill('Another'))
+
+        const results = await translateBatch(adapter, config, {
+          texts,
+          to: 'he',
+        })
+
+        expect(results).toHaveLength(150)
+        // Only 2 unique texts despite 150 items
+        expect(translateWithAI).toHaveBeenCalledTimes(2)
+      })
+    })
   })
 
   describe('detectLanguage', () => {

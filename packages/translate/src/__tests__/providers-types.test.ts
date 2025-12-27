@@ -104,7 +104,7 @@ describe('getModelInfo', () => {
       expect(info).not.toHaveProperty('maxTokens')
     })
 
-    it('should handle model with numeric provider (converts to string)', () => {
+    it('should handle model with numeric provider (falls back to unknown)', () => {
       const model = {
         modelId: 'test-model',
         provider: 123,
@@ -112,7 +112,8 @@ describe('getModelInfo', () => {
 
       const info = getModelInfo(model)
 
-      expect(info.provider).toBe(123)
+      // Numeric providers are invalid - provider must be string
+      expect(info.provider).toBe('unknown')
     })
 
     it('should handle model with null modelId', () => {
