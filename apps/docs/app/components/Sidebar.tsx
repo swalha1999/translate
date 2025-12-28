@@ -4,6 +4,7 @@ const navigation = [
   { name: 'Introduction', href: '/' },
   { name: 'Getting Started', href: '/docs/getting-started' },
   { name: 'Configuration', href: '/docs/configuration' },
+  { name: 'Architecture', href: '/docs/architecture' },
   { name: 'Adapters', href: '/docs/adapters' },
   { name: 'API Reference', href: '/docs/api-reference' },
   { name: 'Examples', href: '/docs/examples' },

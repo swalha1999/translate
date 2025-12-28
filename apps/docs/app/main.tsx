@@ -5,6 +5,7 @@ import { Layout } from './components/Layout'
 import { HomePage } from './pages/HomePage'
 import { GettingStartedPage } from './pages/GettingStartedPage'
 import { ConfigurationPage } from './pages/ConfigurationPage'
+import { ArchitecturePage } from './pages/ArchitecturePage'
 import { AdaptersPage } from './pages/AdaptersPage'
 import { ApiReferencePage } from './pages/ApiReferencePage'
 import { ExamplesPage } from './pages/ExamplesPage'
@@ -19,6 +20,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Route path="/" element={<HomePage />} />
           <Route path="/docs/getting-started" element={<GettingStartedPage />} />
           <Route path="/docs/configuration" element={<ConfigurationPage />} />
+          <Route path="/docs/architecture" element={<ArchitecturePage />} />
           <Route path="/docs/adapters" element={<AdaptersPage />} />
           <Route path="/docs/api-reference" element={<ApiReferencePage />} />
           <Route path="/docs/examples" element={<ExamplesPage />} />
