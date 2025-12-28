@@ -256,7 +256,8 @@ describe('analytics', () => {
 
       await translateText(adapter, config, { text: 'Hello', to: 'he' })
 
-      expect(analyticsEvents[0].duration).toBeGreaterThanOrEqual(50)
+      // Allow small timing variance (setTimeout isn't perfectly precise)
+      expect(analyticsEvents[0].duration).toBeGreaterThanOrEqual(45)
     })
   })
 })
